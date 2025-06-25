@@ -1,22 +1,20 @@
-ARG image
+############  base image with Playwright + Node ############
+ARG image=mcr.microsoft.com/playwright:v1.53.0-jammy
+FROM ${image}
 
-FROM $image
+##########  install dependencies & copy source #############
+WORKDIR /app
 
-# Server part
-WORKDIR /src
+# 1. copy manifests and install ALL deps (prod + dev, we need ts-node)
+COPY package*.json tsconfig.json ./
+RUN npm ci
 
-# Add dependencies files
-ADD package.json .
-ADD package-lock.json .
-ADD tsconfig.json .
+# 2. copy *all* source files (controllers/, routes/, config/, etc.)
+COPY . .
 
-RUN apt purge -y nodejs && \
-    curl -sL https://deb.nodesource.com/setup_22.x | bash - && \
-    apt update && \
-    apt install -y nodejs && \
-    npm install && \
-    npx playwright install --with-deps chromium
+##########  run the API in-place with ts-node ################
+ENV NODE_ENV=production \
+    PORT=3000
 
-# Compile files and launch server
-CMD npx tsc && \
-    node app.js
+EXPOSE 3000
+CMD ["npx", "ts-node", "app.ts"]
