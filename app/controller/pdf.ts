@@ -1,3 +1,5 @@
+import path from 'node:path';
+
 import { Request, Response, Router } from 'express';
 
 import * as PDF from '../model/pdf';
@@ -40,7 +42,8 @@ router.get('/api/convert', async (req: Request, res: Response, next: any) => {
 
   try {
     const data = await PDF.convertHtmlContentToPDF(options);
-    res.send(data);
+    const localPath = path.join(process.cwd(), 'public', 'pdf', path.basename(data));
+    return res.download(localPath);
   } catch (error) {
     return next(error);
   }
@@ -82,7 +85,8 @@ router.post('/api/convert', async (req: Request, res: Response, next: any) => {
 
   try {
     const data = await PDF.convertHtmlContentToPDF(options);
-    res.send(data);
+    const localPath = path.join(process.cwd(), 'public', 'pdf', path.basename(data));
+    return res.download(localPath);
   } catch (error) {
     return next(error);
   }
