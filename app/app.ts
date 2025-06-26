@@ -3,6 +3,7 @@ import express, { Express } from 'express';
 import { MODE, PORT, URL } from './config/config';
 
 import { init as initDb } from './db';
+import { usageCap } from './middleware/usageCap';         // ← NEW
 
 import * as AssetMiddleware from './middleware/asset';
 import * as CronMiddleware from './middleware/cron';
@@ -20,12 +21,17 @@ if (require.main === module) {
 
 async function init(): Promise<Express> {
   const app = express();
+
   app.use(SecurityMiddleware.app);
   app.use(PostMiddleware.app);
   app.use(AssetMiddleware.app);
   LogMiddleware.init();
 
   CronMiddleware.init();
+
+  // ─── free-tier usage cap middleware ───────────────────────────────
+  app.use('/api/convert', usageCap);    // must be before PDF routes
+  // ──────────────────────────────────────────────────────────────────
 
   app.use(PDFController.router);
   app.use(NotFoundController.router);
@@ -34,7 +40,7 @@ async function init(): Promise<Express> {
 
   initDb();
   app.listen(PORT);
-  console.log(`Server running in ${MODE} mode on port ${PORT} on address ${URL}`);
+  console.log(`Server running in ${MODE} mode on port ${PORT} at ${URL}`);
 
   return app;
 }
