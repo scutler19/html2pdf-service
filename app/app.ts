@@ -2,6 +2,8 @@ import express, { Express } from 'express';
 
 import { MODE, PORT, URL } from './config/config';
 
+import { init as initDb } from './db';
+
 import * as AssetMiddleware from './middleware/asset';
 import * as CronMiddleware from './middleware/cron';
 import * as ErrorMiddleware from './middleware/error';
@@ -30,6 +32,7 @@ async function init(): Promise<Express> {
 
   app.use(ErrorMiddleware.handle);
 
+  initDb();
   app.listen(PORT);
   console.log(`Server running in ${MODE} mode on port ${PORT} on address ${URL}`);
 
