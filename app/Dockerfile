@@ -7,7 +7,7 @@ WORKDIR /app
 
 # 1. copy manifests and install ALL deps (prod + dev, we need ts-node)
 COPY package*.json tsconfig.json ./
-RUN npm ci
+RUN npm install --omit=dev
 
 # 2. copy *all* source files (controllers/, routes/, config/, etc.)
 COPY . .
