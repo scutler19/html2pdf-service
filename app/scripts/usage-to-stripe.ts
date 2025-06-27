@@ -9,9 +9,9 @@ const DATABASE_URL = process.env.DATABASE_URL!;
 
 // Stripe price IDs
 const PRICE_FREE_50    = 'price_1RePk3C06iB64lkCDLdhXZ3x';
-const PRICE_STARTER_2K = 'price_1RePljC06iB64lkCgcNzb4GH';
-const PRICE_PRO_12K    = 'price_1RePlwC06iB64lkCU0bV0hMv';
-const PRICE_OVERAGE    = 'price_1RePmNC06iB64lkCHtcRAULx';
+const PRICE_STARTER_2K = 'price_1RejY7C06iB64lkCRQh26hSB';
+const PRICE_PRO_12K    = 'price_1Reja6C06iB64lkCIjaBIBnC';
+const PRICE_OVERAGE    = 'price_1RejbCC06iB64lkCcB0Lx8bJ';
 
 // included pages per tier
 const INCLUDED: Record<string, number> = {
