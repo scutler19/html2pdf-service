@@ -12,7 +12,7 @@ export const router = Router();
  * Stripe webhook endpoint
  * Mounted with express.raw in app.ts
  */
-router.post('/webhook/stripe', async (req: Request, res: Response, next: NextFunction) => {
+router.post('/', async (req: Request, res: Response, next: NextFunction) => {
   const sig = req.headers['stripe-signature'] as string;
   let event: Stripe.Event;
 
