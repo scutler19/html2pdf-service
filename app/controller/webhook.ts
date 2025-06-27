@@ -3,14 +3,14 @@ import { Router, Request, Response, NextFunction } from 'express';
 import Stripe from 'stripe';
 import { pool } from '../db';
 
-const stripe = new Stripe(process.env.STRIPE_KEY!, { apiVersion: '2024-04-10' });
+const stripe    = new Stripe(process.env.STRIPE_KEY!, { apiVersion: '2024-04-10' });
 const WH_SECRET = process.env.STRIPE_WEBHOOK_SECRET!;
 
 export const router = Router();
 
 /**
  * Stripe webhook endpoint
- * Must receive raw body, so we mount with express.raw in app.ts
+ * Mounted with express.raw in app.ts
  */
 router.post('/webhook/stripe', async (req: Request, res: Response, next: NextFunction) => {
   const sig = req.headers['stripe-signature'] as string;
@@ -26,13 +26,28 @@ router.post('/webhook/stripe', async (req: Request, res: Response, next: NextFun
   try {
     if (event.type === 'checkout.session.completed') {
       const session = event.data.object as Stripe.Checkout.Session;
+
       if (!session.subscription || !session.metadata?.api_key) {
         return res.json({ received: true });
       }
 
-      const apiKey = session.metadata.api_key;
+      const apiKey        = session.metadata.api_key;
       const subscriptionId = session.subscription.toString();
-      const planPriceId = (session.items?.data[0]?.price.id)!;
+
+      /** Retrieve the subscription to discover the fixed-fee price */
+      const sub = await stripe.subscriptions.retrieve(subscriptionId, {
+        expand: ['items.data.price'],
+      });
+
+      const fixedItem = sub.items.data.find(
+        (i) => i.price.type === 'recurring' && i.price.unit_amount
+      );
+      if (!fixedItem) {
+        console.warn('⚠️  No fixed-fee item found on subscription', subscriptionId);
+        return res.json({ received: true });
+      }
+
+      const planPriceId = fixedItem.price.id;
 
       await pool.query(
         `INSERT INTO subscriptions (api_key, subscription_id, price_id)
@@ -46,7 +61,7 @@ router.post('/webhook/stripe', async (req: Request, res: Response, next: NextFun
       console.log(`✅ Linked ${apiKey} → ${subscriptionId}`);
     }
 
-    // Add more event types (invoice.payment_failed, etc.) as needed
+    // Handle more event types (invoice.payment_failed, etc.) as needed
 
     res.json({ received: true });
   } catch (err) {
