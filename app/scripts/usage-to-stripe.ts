@@ -11,7 +11,7 @@ const DATABASE_URL = process.env.DATABASE_URL!;
 const PRICE_FREE_50    = 'price_1RePk3C06iB64lkCDLdhXZ3x';
 const PRICE_STARTER_2K = 'price_1RejY7C06iB64lkCRQh26hSB';
 const PRICE_PRO_12K    = 'price_1Reja6C06iB64lkCIjaBIBnC';
-const PRICE_OVERAGE    = 'price_1RejbCC06iB64lkCcB0Lx8bJ';
+const PRICE_OVERAGE    = 'price_1RekXIC06iB64lkCURRkHq7Z';
 
 // included pages per tier
 const INCLUDED: Record<string, number> = {

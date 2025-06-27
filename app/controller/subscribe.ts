@@ -6,7 +6,7 @@ const stripe = new Stripe(process.env.STRIPE_KEY!, { apiVersion: '2024-04-10' })
 
 const PRICE_STARTER = 'price_1RejY7C06iB64lkCRQh26hSB';   // Starter 2000 flat fee
 const PRICE_PRO     = 'price_1Reja6C06iB64lkCIjaBIBnC';   // Pro 12000   flat fee
-const PRICE_OVERAGE = 'price_1RejbCC06iB64lkCcB0Lx8bJ';   // shared $0.0015 / page
+const PRICE_OVERAGE = 'price_1RekXIC06iB64lkCURRkHq7Z';   // shared $0.002 / page
 
 // success & cancel return to your marketing site (adjust as needed)
 const SUCCESS_URL = 'https://fileslap.com/success';
