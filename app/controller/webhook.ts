@@ -8,8 +8,8 @@ const stripe = new Stripe(process.env.STRIPE_KEY!, { apiVersion: '2024-04-10' })
 /** choose secret by live/test mode */
 function chooseSecret(live: boolean): string {
   return live
-    ? process.env.STRIPE_WEBHOOK_SECRET!       // live endpoint secret
-    : process.env.STRIPE_WEBHOOK_SECRET_TEST!; // test-mode secret
+    ? process.env.STRIPE_WEBHOOK_SECRET!        // live endpoint secret
+    : process.env.STRIPE_WEBHOOK_SECRET_TEST!;  // test-mode secret
 }
 
 export const router = Router();
@@ -23,7 +23,9 @@ router.post('/', async (req: Request, res: Response, next: NextFunction) => {
   let event: Stripe.Event;
 
   try {
-    event = stripe.webhooks.constructEvent(req.body, sig, WH_SECRET);
+    const live = req.headers['stripe-live-mode'] !== 'false'; // "true" or "false"
+    const secret = chooseSecret(live);
+    event = stripe.webhooks.constructEvent(req.body, sig, secret);
   } catch (err) {
     console.error('⚠️  Webhook signature verification failed.', err);
     return res.status(400).send(`Webhook Error: ${(err as Error).message}`);
@@ -37,7 +39,7 @@ router.post('/', async (req: Request, res: Response, next: NextFunction) => {
         return res.json({ received: true });
       }
 
-      const apiKey        = session.metadata.api_key;
+      const apiKey         = session.metadata.api_key;
       const subscriptionId = session.subscription.toString();
 
       /** Retrieve the subscription to discover the fixed-fee price */
