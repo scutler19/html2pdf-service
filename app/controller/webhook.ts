@@ -3,8 +3,14 @@ import { Router, Request, Response, NextFunction } from 'express';
 import Stripe from 'stripe';
 import { pool } from '../db';
 
-const stripe    = new Stripe(process.env.STRIPE_KEY!, { apiVersion: '2024-04-10' });
-const WH_SECRET = process.env.STRIPE_WEBHOOK_SECRET!;
+const stripe = new Stripe(process.env.STRIPE_KEY!, { apiVersion: '2024-04-10' });
+
+/** choose secret by live/test mode */
+function chooseSecret(live: boolean): string {
+  return live
+    ? process.env.STRIPE_WEBHOOK_SECRET!       // live endpoint secret
+    : process.env.STRIPE_WEBHOOK_SECRET_TEST!; // test-mode secret
+}
 
 export const router = Router();
 
