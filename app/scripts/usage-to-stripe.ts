@@ -4,11 +4,11 @@ import Stripe from 'stripe';
 import { Pool } from 'pg';
 
 // ─── env vars ──────────────────────────────────────────────────────────────
-const STRIPE_KEY   = process.env.STRIPE_KEY!;         // set in Render
-const DATABASE_URL = process.env.DATABASE_URL!;       // set in Render
+const STRIPE_KEY   = process.env.STRIPE_KEY!;
+const DATABASE_URL = process.env.DATABASE_URL!;
 // ───────────────────────────────────────────────────────────────────────────
 
-// Stripe price IDs (copy-pasted from your dashboard)
+// Stripe price IDs
 const PRICE_FREE_50     = 'price_1RePk3C06iB64lkCDLdhXZ3x';
 const PRICE_STARTER_2K  = 'price_1RePljC06iB64lkCgcNzb4GH';
 const PRICE_PRO_12K     = 'price_1RePlwC06iB64lkCU0bV0hMv';
@@ -21,11 +21,17 @@ const INCLUDED: Record<string, number> = {
   [PRICE_PRO_12K]:    12000,
 };
 
-const stripe = new Stripe(STRIPE_KEY, { apiVersion: '2023-10-16' });
-const pool   = new Pool({ connectionString: DATABASE_URL, ssl: { rejectUnauthorized: false } });
+const stripe = new Stripe(STRIPE_KEY, {
+  apiVersion: '2024-04-10',          // current GA version
+});
+
+const pool = new Pool({
+  connectionString: DATABASE_URL,
+  ssl: { rejectUnauthorized: false },
+});
 
 (async () => {
-  // 1) Sum yesterday’s pages per API key
+  // 1) pages per API key (yesterday UTC)
   const { rows } = await pool.query(`
     SELECT api_key,
            SUM(pages)::int AS pages
@@ -35,26 +41,29 @@ const pool   = new Pool({ connectionString: DATABASE_URL, ssl: { rejectUnauthori
   `);
 
   for (const { api_key, pages } of rows) {
-    // 2) Find the customer’s subscription by api_key metadata
-    const subs = await stripe.subscriptions.list({ limit: 1, metadata: { api_key } });
-    const sub  = subs.data[0];
+    // 2) find the customer’s subscription via metadata search
+    const subSearch = await stripe.subscriptions.search({
+      query: `metadata['api_key']:'${api_key}'`,
+      limit: 1,
+    });
+    const sub = subSearch.data[0];
     if (!sub) continue;
 
-    // 3) Identify the fixed-fee item on the subscription
-    const fixedItem = sub.items.data.find(i =>
-      i.price.type === 'recurring' && i.price.id in INCLUDED
-    );
-    if (!fixedItem) continue;
+    // 3) locate the fixed-fee and overage items on that subscription
+    const fixedItem = sub.items.data.find(i => INCLUDED[i.price.id] !== undefined);
+    const overItem  = sub.items.data.find(i => i.price.id === PRICE_OVERAGE);
+    if (!fixedItem || !overItem) continue;
 
     const included = INCLUDED[fixedItem.price.id];
     const billable = Math.max(0, pages - included);
-    if (billable === 0) continue;          // nothing to charge
+    if (billable === 0) continue;
 
-    // 4) Post usage record to the overage price
-    await stripe.subscriptionItems.createUsageRecord(PRICE_OVERAGE, {
+    // 4) create the usage record on the *subscription-item* ID
+    await stripe.subscriptionItems.createUsageRecord(overItem.id, {
       quantity:  billable,
       timestamp: Math.floor(Date.now() / 1000),
       action:    'increment',
+      description: 'Daily HTML→PDF usage',
     });
 
     console.log(`📤 sent ${billable} pages for key ${api_key}`);
