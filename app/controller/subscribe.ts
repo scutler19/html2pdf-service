@@ -47,8 +47,8 @@ router.get('/api/subscribe/:plan', async (req: Request, res: Response, next: Nex
       mode: 'subscription',
       customer: customerId,
       line_items: [
-        { price: priceId,      quantity: 1 },
-        { price: PRICE_OVERAGE, quantity: 0 },   // $0 item; usage records will bill it
+        { price: priceId,       quantity: 1 }, // fixed-fee plan
+        { price: PRICE_OVERAGE }               // usage price – omit quantity
       ],
       success_url: SUCCESS_URL + '?session_id={CHECKOUT_SESSION_ID}',
       cancel_url: CANCEL_URL,
