@@ -1,16 +1,19 @@
 // app/scripts/usage-to-stripe.ts
-import 'dotenv/config';
 import Stripe from 'stripe';
 import { Pool } from 'pg';
 
+// ─── env vars from Render ─────────────────────────────────────────────
 const STRIPE_KEY   = process.env.STRIPE_KEY!;
 const DATABASE_URL = process.env.DATABASE_URL!;
+// ──────────────────────────────────────────────────────────────────────
 
+// Stripe price IDs
 const PRICE_FREE_50    = 'price_1RePk3C06iB64lkCDLdhXZ3x';
 const PRICE_STARTER_2K = 'price_1RePljC06iB64lkCgcNzb4GH';
 const PRICE_PRO_12K    = 'price_1RePlwC06iB64lkCU0bV0hMv';
 const PRICE_OVERAGE    = 'price_1RePmNC06iB64lkCHtcRAULx';
 
+// included pages per tier
 const INCLUDED: Record<string, number> = {
   [PRICE_FREE_50]:    50,
   [PRICE_STARTER_2K]: 2000,
@@ -21,7 +24,7 @@ const stripe = new Stripe(STRIPE_KEY, { apiVersion: '2024-04-10' });
 const pool   = new Pool({ connectionString: DATABASE_URL, ssl: { rejectUnauthorized: false } });
 
 (async () => {
-  // pages per API key (yesterday UTC)
+  // yesterday’s usage per API key
   const { rows } = await pool.query(`
     SELECT api_key, SUM(pages)::int AS pages
     FROM   page_events
@@ -30,12 +33,12 @@ const pool   = new Pool({ connectionString: DATABASE_URL, ssl: { rejectUnauthori
   `);
 
   for (const { api_key, pages } of rows) {
-    // find subscription via metadata
-    const subSearch = await stripe.subscriptions.search({
+    // find subscription by metadata
+    const subRes = await stripe.subscriptions.search({
       query: `metadata['api_key']:'${api_key}'`,
       limit: 1,
     });
-    const sub = subSearch.data[0];
+    const sub = subRes.data[0];
     if (!sub) continue;
 
     const fixedItem = sub.items.data.find(i => INCLUDED[i.price.id] !== undefined);
