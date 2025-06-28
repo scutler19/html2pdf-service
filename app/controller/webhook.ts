@@ -23,8 +23,11 @@ router.post('/', async (req: Request, res: Response, next: NextFunction) => {
   let event: Stripe.Event;
 
   try {
-    const live = req.headers['stripe-live-mode'] !== 'false'; // "true" or "false"
-    const secret = chooseSecret(live);
+    // Stripe sends "Stripe-Livemode: true|false"; the CLI omits the header.
+    const liveHeader = req.headers['stripe-livemode'] as string | undefined;
+    const live       = liveHeader === 'true';          // undefined → test mode
+    const secret     = chooseSecret(live);
+
     event = stripe.webhooks.constructEvent(req.body, sig, secret);
   } catch (err) {
     console.error('⚠️  Webhook signature verification failed.', err);
