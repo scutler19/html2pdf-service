@@ -16,16 +16,16 @@ export const router = Router();
 
 /**
  * Stripe webhook endpoint
- * Mounted with express.raw in app.ts
+ * (mounted with express.raw in app.ts)
  */
 router.post('/', async (req: Request, res: Response, next: NextFunction) => {
   const sig = req.headers['stripe-signature'] as string;
   let event: Stripe.Event;
 
   try {
-    // Stripe sends "Stripe-Livemode: true|false"; the CLI omits the header.
+    // Stripe adds "Stripe-Livemode: true|false"; CLI omits it.
     const liveHeader = req.headers['stripe-livemode'] as string | undefined;
-    const live       = liveHeader === 'true';          // undefined → test mode
+    const live       = liveHeader === 'true';     // undefined → test
     const secret     = chooseSecret(live);
 
     event = stripe.webhooks.constructEvent(req.body, sig, secret);
@@ -35,44 +35,78 @@ router.post('/', async (req: Request, res: Response, next: NextFunction) => {
   }
 
   try {
-    if (event.type === 'checkout.session.completed') {
-      const session = event.data.object as Stripe.Checkout.Session;
+    switch (event.type) {
+      /* ───────────── 1. new checkout → store plan ───────────── */
+      case 'checkout.session.completed': {
+        const session = event.data.object as Stripe.Checkout.Session;
 
-      if (!session.subscription || !session.metadata?.api_key) {
-        return res.json({ received: true });
+        if (!session.subscription || !session.metadata?.api_key) break;
+
+        const apiKey         = session.metadata.api_key;
+        const subscriptionId = session.subscription.toString();
+
+        // pull the fixed-fee price on the subscription
+        const sub = await stripe.subscriptions.retrieve(subscriptionId, {
+          expand: ['items.data.price'],
+        });
+
+        const fixedItem = sub.items.data.find(
+          (i) => i.price.type === 'recurring' && i.price.unit_amount
+        );
+        if (!fixedItem) break;
+
+        const planPriceId = fixedItem.price.id;
+
+        await pool.query(
+          `INSERT INTO subscriptions (api_key, subscription_id, price_id, paused)
+             VALUES ($1, $2, $3, false)
+           ON CONFLICT (api_key) DO UPDATE
+             SET subscription_id = EXCLUDED.subscription_id,
+                 price_id        = EXCLUDED.price_id,
+                 paused          = false`,
+          [apiKey, subscriptionId, planPriceId]
+        );
+
+        console.log(`✅ Linked ${apiKey} → ${subscriptionId}`);
+        break;
       }
 
-      const apiKey         = session.metadata.api_key;
-      const subscriptionId = session.subscription.toString();
+      /* ───────────── 2. payment failed → pause key ──────────── */
+      case 'invoice.payment_failed': {
+        const invoice = event.data.object as Stripe.Invoice;
+        if (!invoice.subscription) break;
 
-      /** Retrieve the subscription to discover the fixed-fee price */
-      const sub = await stripe.subscriptions.retrieve(subscriptionId, {
-        expand: ['items.data.price'],
-      });
+        await pool.query(
+          `UPDATE subscriptions
+             SET paused = true, updated_at = now()
+           WHERE subscription_id = $1`,
+          [invoice.subscription.toString()]
+        );
 
-      const fixedItem = sub.items.data.find(
-        (i) => i.price.type === 'recurring' && i.price.unit_amount
-      );
-      if (!fixedItem) {
-        console.warn('⚠️  No fixed-fee item found on subscription', subscriptionId);
-        return res.json({ received: true });
+        console.log(`⏸️  Paused sub ${invoice.subscription} (payment failed)`);
+        break;
       }
 
-      const planPriceId = fixedItem.price.id;
+      /* ───────────── 3. invoice paid → un-pause key ─────────── */
+      case 'invoice.paid': {
+        const invoice = event.data.object as Stripe.Invoice;
+        if (!invoice.subscription) break;
 
-      await pool.query(
-        `INSERT INTO subscriptions (api_key, subscription_id, price_id)
-         VALUES ($1, $2, $3)
-         ON CONFLICT (api_key) DO UPDATE
-         SET subscription_id = EXCLUDED.subscription_id,
-             price_id        = EXCLUDED.price_id`,
-        [apiKey, subscriptionId, planPriceId]
-      );
+        await pool.query(
+          `UPDATE subscriptions
+             SET paused = false, updated_at = now()
+           WHERE subscription_id = $1`,
+          [invoice.subscription.toString()]
+        );
 
-      console.log(`✅ Linked ${apiKey} → ${subscriptionId}`);
+        console.log(`▶️  Unpaused sub ${invoice.subscription} (payment ok)`);
+        break;
+      }
+
+      default:
+        // ignore other events for now
+        break;
     }
-
-    // Handle more event types (invoice.payment_failed, etc.) as needed
 
     res.json({ received: true });
   } catch (err) {
