@@ -39,13 +39,11 @@ router.post('/', async (req: Request, res: Response, next: NextFunction) => {
       /* ───────────── 1. new checkout → store plan ───────────── */
       case 'checkout.session.completed': {
         const session = event.data.object as Stripe.Checkout.Session;
-
         if (!session.subscription || !session.metadata?.api_key) break;
 
         const apiKey         = session.metadata.api_key;
         const subscriptionId = session.subscription.toString();
 
-        // pull the fixed-fee price on the subscription
         const sub = await stripe.subscriptions.retrieve(subscriptionId, {
           expand: ['items.data.price'],
         });
@@ -71,7 +69,7 @@ router.post('/', async (req: Request, res: Response, next: NextFunction) => {
         break;
       }
 
-      /* ───────────── 2. payment failed → pause key ──────────── */
+      /* ───────────── 2. invoice failed → pause ──────────────── */
       case 'invoice.payment_failed': {
         const invoice = event.data.object as Stripe.Invoice;
         if (!invoice.subscription) break;
@@ -87,7 +85,7 @@ router.post('/', async (req: Request, res: Response, next: NextFunction) => {
         break;
       }
 
-      /* ───────────── 3. invoice paid → un-pause key ─────────── */
+      /* ───────────── 3. invoice paid → unpause ─────────────── */
       case 'invoice.paid': {
         const invoice = event.data.object as Stripe.Invoice;
         if (!invoice.subscription) break;
@@ -103,8 +101,48 @@ router.post('/', async (req: Request, res: Response, next: NextFunction) => {
         break;
       }
 
+      /* ───────────── 4. plan change / cancel ────────────────── */
+      case 'customer.subscription.updated': {
+        const sub = event.data.object as Stripe.Subscription;
+
+        const fixedItem = sub.items.data.find(
+          (i) => i.price.type === 'recurring' && i.price.unit_amount
+        );
+        if (!fixedItem) break;
+
+        const priceId = fixedItem.price.id;
+        const paused  = sub.status !== 'active';
+
+        await pool.query(
+          `UPDATE subscriptions
+             SET price_id = $1,
+                 paused   = $2,
+                 updated_at = now()
+           WHERE subscription_id = $3`,
+          [priceId, paused, sub.id]
+        );
+
+        console.log(`🔄 Updated sub ${sub.id} (price → ${priceId}, paused ${paused})`);
+        break;
+      }
+
+      /* ───────────── 5. subscription deleted → pause ────────── */
+      case 'customer.subscription.deleted': {
+        const sub = event.data.object as Stripe.Subscription;
+
+        await pool.query(
+          `UPDATE subscriptions
+             SET paused = true, updated_at = now()
+           WHERE subscription_id = $1`,
+          [sub.id]
+        );
+
+        console.log(`❌ Subscription ${sub.id} canceled → key paused`);
+        break;
+      }
+
       default:
-        // ignore other events for now
+        // ignore other events
         break;
     }
 
