@@ -7,17 +7,29 @@ const STRIPE_KEY   = process.env.STRIPE_KEY!;
 const DATABASE_URL = process.env.DATABASE_URL!;
 // ──────────────────────────────────────────────────────────────────────
 
-// Stripe price IDs
-const PRICE_FREE_50    = 'price_1RePk3C06iB64lkCDLdhXZ3x';
-const PRICE_STARTER_2K = 'price_1RejY7C06iB64lkCRQh26hSB';
-const PRICE_PRO_12K    = 'price_1Reja6C06iB64lkCIjaBIBnC';
-const PRICE_OVERAGE    = 'price_1RekXIC06iB64lkCURRkHq7Z';
+// Are we running with a test secret key?  (sk_test_…)
+const IS_TEST = STRIPE_KEY.startsWith('sk_test');
+
+// Stripe price IDs (live vs test)
+const PRICES = IS_TEST
+  ? {
+      FREE:     'price_1ReqQvC06iB64lkCD4C1w73h',
+      STARTER:  'price_1ReqRTC06iB64lkC7K2urHlK',
+      PRO:      'price_1ReqRtC06iB64lkCu2FSOxqz',
+      OVERAGE:  'price_1ReqT7C06iB64lkCFDfgCqO4',
+    }
+  : {
+      FREE:     'price_1RePk3C06iB64lkCDLdhXZ3x',
+      STARTER:  'price_1RejY7C06iB64lkCRQh26hSB',
+      PRO:      'price_1Reja6C06iB64lkCIjaBIBnC',
+      OVERAGE:  'price_1RekXIC06iB64lkCURRkHq7Z',
+    };
 
 // included pages per tier
 const INCLUDED: Record<string, number> = {
-  [PRICE_FREE_50]:    50,
-  [PRICE_STARTER_2K]: 2000,
-  [PRICE_PRO_12K]:    12000,
+  [PRICES.FREE]:    50,
+  [PRICES.STARTER]: 2000,
+  [PRICES.PRO]:     12000,
 };
 
 const stripe = new Stripe(STRIPE_KEY, { apiVersion: '2024-04-10' });
@@ -42,7 +54,7 @@ const pool   = new Pool({ connectionString: DATABASE_URL, ssl: { rejectUnauthori
     if (!sub) continue;
 
     const fixedItem = sub.items.data.find(i => INCLUDED[i.price.id] !== undefined);
-    const overItem  = sub.items.data.find(i => i.price.id === PRICE_OVERAGE);
+    const overItem  = sub.items.data.find(i => i.price.id === PRICES.OVERAGE);
     if (!fixedItem || !overItem) continue;
 
     const included = INCLUDED[fixedItem.price.id];
