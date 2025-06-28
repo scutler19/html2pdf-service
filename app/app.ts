@@ -5,6 +5,7 @@ import { MODE, PORT, URL } from './config/config';
 
 import { init as initDb } from './db';
 import { usageCap } from './middleware/usageCap';
+import { billingGuard } from './middleware/billingGuard';   // ← NEW
 
 import * as AssetMiddleware    from './middleware/asset';
 import * as CronMiddleware     from './middleware/cron';
@@ -15,7 +16,7 @@ import * as SecurityMiddleware from './middleware/security';
 
 import * as PDFController       from './controller/pdf';
 import * as SubscribeController from './controller/subscribe';
-import * as BillingController   from './controller/billing';   // ← NEW
+import * as BillingController   from './controller/billing';
 import * as WebhookController   from './controller/webhook';
 import * as NotFoundController  from './controller/not-found';
 
@@ -26,9 +27,10 @@ if (require.main === module) {
 async function init(): Promise<Express> {
   const app = express();
 
+  // ─── security first ────────────────────────────────────────────
   app.use(SecurityMiddleware.app);
 
-  // ─── Stripe webhook (needs raw body) ────────────────────────────
+  // ─── Stripe webhook (raw body) ─────────────────────────────────
   app.use(
     '/webhook/stripe',
     bodyParser.raw({ type: 'application/json' }),
@@ -36,20 +38,23 @@ async function init(): Promise<Express> {
   );
   // ───────────────────────────────────────────────────────────────
 
-  app.use(PostMiddleware.app);     // JSON/body parsing starts here
+  app.use(PostMiddleware.app);   // JSON/body parsing starts here
   app.use(AssetMiddleware.app);
   LogMiddleware.init();
 
   CronMiddleware.init();
 
-  // ─── free-tier usage cap ───────────────────────────────────────
-  app.use('/api/convert', usageCap);   // must precede PDF route
+  // ─── payment-status guard & usage cap ──────────────────────────
+  app.use('/api/convert', billingGuard); // block paused subs
+  app.use('/api/convert', usageCap);     // free-tier limit
   // ───────────────────────────────────────────────────────────────
 
+  // ─── routes ────────────────────────────────────────────────────
   app.use(PDFController.router);
   app.use(SubscribeController.router);
-  app.use(BillingController.router);   // ← NEW mount
+  app.use(BillingController.router);
   app.use(NotFoundController.router);
+  // ───────────────────────────────────────────────────────────────
 
   app.use(ErrorMiddleware.handle);
 
