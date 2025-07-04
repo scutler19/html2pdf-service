@@ -88,6 +88,10 @@ Values :
 ##### `filename` \<string\>
 Specify your own filename. PDF with same filenames will be overwritten. By default, it will be a unique generated name.
 
+## Usage
+
+All `/api/convert` requests require a valid API key in the `X-API-KEY` header. Invalid or missing API keys will return HTTP 401 with `{error:"invalid_api_key"}`.
+
 ## Production
 
 ### Requirements

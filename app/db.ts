@@ -18,6 +18,16 @@ export async function init() {
     );
   `);
   console.log('✅ page_events table ensured');
+
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS accounts (
+      id         serial PRIMARY KEY,
+      api_key    text      UNIQUE NOT NULL,
+      email      text      NOT NULL,
+      created_at timestamptz DEFAULT now()
+    );
+  `);
+  console.log('✅ accounts table ensured');
 }
 
 export { pool };
