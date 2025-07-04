@@ -5,8 +5,10 @@ import bodyParser from 'body-parser';
 import { MODE, PORT, URL } from './config/config';
 import { init as initDb }   from './db';
 
-import { usageCap     } from './middleware/usageCap';
-import { billingGuard } from './middleware/billingGuard';
+/* middleware */
+import { usageCap       } from './middleware/usageCap';
+import { billingGuard   } from './middleware/billingGuard';
+import { concurrencyGuard } from './middleware/concurrencyGuard';  // ← use existing file
 
 import * as AssetMiddleware     from './middleware/asset';
 import * as CronMiddleware      from './middleware/cron';
@@ -15,57 +17,57 @@ import * as LogMiddleware       from './middleware/log';
 import * as PostMiddleware      from './middleware/post';
 import * as SecurityMiddleware  from './middleware/security';
 
-import * as PDFController        from './controller/pdf';
-import * as SubscribeController  from './controller/subscribe';
-import * as BillingController    from './controller/billing';
-import * as SignupController     from './controller/signup';   // ← NEW
-import * as WebhookController    from './controller/webhook';
-import * as NotFoundController   from './controller/not-found';
+/* controllers */
+import * as PDFController       from './controller/pdf';
+import * as SubscribeController from './controller/subscribe';
+import * as BillingController   from './controller/billing';
+import * as SignupController    from './controller/signup';
+import * as WebhookController   from './controller/webhook';
+import * as NotFoundController  from './controller/not-found';
 
-if (require.main === module) {
-  init();
-}
+if (require.main === module) void init();
 
 async function init(): Promise<Express> {
   const app = express();
 
-  /* ── security first ─────────────────────────────────────────── */
+  /* security headers, rate-limit headers, etc. */
   app.use(SecurityMiddleware.app);
 
-  /* ── Stripe webhook (needs raw body) ────────────────────────── */
+  /* Stripe webhook (raw body needed for signature) */
   app.use(
     '/webhook/stripe',
     bodyParser.raw({ type: 'application/json' }),
     WebhookController.router,
   );
-  /* ───────────────────────────────────────────────────────────── */
 
-  app.use(PostMiddleware.app);   // JSON / urlencoded parsers
+  /* JSON / URL-encoded parsers, static assets, logging */
+  app.use(PostMiddleware.app);
   app.use(AssetMiddleware.app);
   LogMiddleware.init();
 
+  /* background jobs */
   CronMiddleware.init();
 
-  /* ── guards on the convert endpoint ─────────────────────────── */
-  app.use('/api/convert', billingGuard); // block if subscription paused
-  app.use('/api/convert', usageCap);     // free-tier limit
-  /* ───────────────────────────────────────────────────────────── */
+  /* ── guards on /api/convert ───────────────────────────── */
+  app.use('/api/convert', concurrencyGuard); // NEW – limit parallel renders
+  app.use('/api/convert', billingGuard);     // block paused/unpaid subs
+  app.use('/api/convert', usageCap);         // 50-page free cap
+  /* ------------------------------------------------------ */
 
-  /* ── application routes ─────────────────────────────────────── */
+  /* routes */
   app.use(PDFController.router);
   app.use(SubscribeController.router);
-  app.use(SignupController.router);      // ← NEW
+  app.use(SignupController.router);
   app.use(BillingController.router);
   app.use(NotFoundController.router);
-  /* ───────────────────────────────────────────────────────────── */
 
+  /* global error handler */
   app.use(ErrorMiddleware.handle);
 
   initDb();
-  app.listen(PORT);
-  console.log(
-    `Server running in ${MODE} mode on port ${PORT} at ${URL}`,
-  );
+  app.listen(PORT, () => {
+    console.log(`Server running in ${MODE} mode on ${URL} (port ${PORT})`);
+  });
 
   return app;
 }
