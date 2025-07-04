@@ -66,7 +66,7 @@ async function init(): Promise<Express> {
 
   initDb();
   app.listen(PORT, () => {
-    console.log(`Server running in ${MODE} mode on ${URL} (port ${PORT})`);
+    console.log("Server booted 🏃");
   });
 
   return app;
