@@ -2,6 +2,8 @@ import path from 'node:path';
 import fs from 'node:fs';
 import { pool } from '../db';
 
+import { concurrencyGuard } from '../middleware/concurrencyGuard';
+
 import { Request, Response, Router } from 'express';
 import * as PDF from '../model/pdf';
 
