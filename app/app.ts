@@ -54,6 +54,11 @@ async function init(): Promise<Express> {
   app.use('/api/convert', usageCap);         // 50-page free cap
   /* ------------------------------------------------------ */
 
+  /* health check endpoint */
+  app.get('/health', (req, res) => {
+    res.json({ status: 'ok', port: PORT, timestamp: new Date().toISOString() });
+  });
+
   /* routes */
   app.use(PDFController.router);
   app.use(SubscribeController.router);
@@ -64,10 +69,18 @@ async function init(): Promise<Express> {
   /* global error handler */
   app.use(ErrorMiddleware.handle);
 
-  initDb();
-  app.listen(PORT, () => {
-    console.log("Server booted 🏃");
-  });
+  try {
+    await initDb();
+    console.log('✅ Database initialized successfully');
+    
+    app.listen(PORT, () => {
+      console.log(`🚀 Server listening on port ${PORT}`);
+      console.log("Server booted 🏃");
+    });
+  } catch (error) {
+    console.error('❌ Failed to start server:', error);
+    process.exit(1);
+  }
 
   return app;
 }
