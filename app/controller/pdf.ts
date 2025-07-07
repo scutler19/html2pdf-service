@@ -71,6 +71,8 @@ router.get('/api/convert', async (req: Request, res: Response, next: any) => {
 
 // ──────────────── POST /api/convert ────────────────────────────────────
 router.post('/api/convert', async (req: Request, res: Response, next: any) => {
+  console.log('🔄 PDF conversion request received');
+  
   const {
     html,
     headerTemplate,
@@ -86,6 +88,8 @@ router.post('/api/convert', async (req: Request, res: Response, next: any) => {
     marginRight,
     marginBottom,
   } = req.body;
+
+  console.log('📝 Request body parsed, HTML length:', html?.length || 0);
 
   const margin = { top: marginTop, left: marginLeft, right: marginRight, bottom: marginBottom };
 
@@ -103,10 +107,15 @@ router.post('/api/convert', async (req: Request, res: Response, next: any) => {
   };
 
   try {
+    console.log('🚀 Starting PDF conversion...');
     const data = await PDF.convertHtmlContentToPDF(options);
+    console.log('✅ PDF conversion completed, file:', data);
+    
     const localPath = path.join(process.cwd(), 'public', 'pdf', path.basename(data));
+    console.log('📁 Local path:', localPath);
 
     // stream the PDF
+    console.log('📤 Streaming PDF to client...');
     res.download(localPath);
 
     // ─── usage metering ─────────────────────────────────────────────────
@@ -125,6 +134,7 @@ router.post('/api/convert', async (req: Request, res: Response, next: any) => {
     }
     // ────────────────────────────────────────────────────────────────────
   } catch (error) {
+    console.error('❌ PDF conversion failed:', error);
     return next(error);
   }
 });
