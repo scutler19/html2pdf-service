@@ -40,6 +40,21 @@ async function init(): Promise<Express> {
     WebhookController.router,
   );
 
+  /* health check endpoint - add before any middleware that might block it */
+  app.get('/health', (req, res) => {
+    res.json({ status: 'ok', port: PORT, timestamp: new Date().toISOString() });
+  });
+
+  /* root endpoint for debugging */
+  app.get('/', (req, res) => {
+    res.json({ 
+      message: 'HTML2PDF Service is running',
+      port: PORT,
+      timestamp: new Date().toISOString(),
+      endpoints: ['/health', '/api/convert', '/api/signup']
+    });
+  });
+
   /* JSON / URL-encoded parsers, static assets, logging */
   app.use(PostMiddleware.app);
   app.use(AssetMiddleware.app);
@@ -53,11 +68,6 @@ async function init(): Promise<Express> {
   app.use('/api/convert', billingGuard);     // block paused/unpaid subs
   app.use('/api/convert', usageCap);         // 50-page free cap
   /* ------------------------------------------------------ */
-
-  /* health check endpoint */
-  app.get('/health', (req, res) => {
-    res.json({ status: 'ok', port: PORT, timestamp: new Date().toISOString() });
-  });
 
   /* routes */
   app.use(PDFController.router);
