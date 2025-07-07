@@ -13,8 +13,8 @@ RUN npm install
 COPY . .
 
 ##########  run the API in-place with ts-node ################
-ENV NODE_ENV=production \
-    PORT=3000
+ENV NODE_ENV=production
 
+# Don't set PORT here - let Render set it dynamically
 EXPOSE 3000
 CMD ["npx", "ts-node", "app.ts"]
