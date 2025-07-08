@@ -1,6 +1,7 @@
 // app/middleware/billingGuard.ts
 import { Request, Response, NextFunction } from 'express';
 import { pool } from '../db';
+import { isDemoKey } from '../config/demo';
 
 /**
  * Validates API key exists in accounts table, then blocks requests whose subscription is paused (payment failure).
@@ -12,6 +13,11 @@ export async function billingGuard(req: Request, res: Response, next: NextFuncti
     if (!apiKey) {
       console.warn("Blocked convert (invalid key):", req.ip);
       return res.status(401).json({ error: 'invalid_api_key' });
+    }
+
+    // Bypass all checks for demo key
+    if (isDemoKey(apiKey)) {
+      return next();
     }
 
     // First, validate the API key exists in accounts table

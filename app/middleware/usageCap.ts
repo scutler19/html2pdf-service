@@ -1,6 +1,7 @@
 // app/middleware/usageCap.ts
 import { Request, Response, NextFunction } from 'express';
 import { pool } from '../db';
+import { isDemoKey } from '../config/demo';
 
 // free-tier limits
 const MAX_PDFS_MONTH = 50;
@@ -9,6 +10,11 @@ const MAX_PDFS_DAY   = 5;
 export async function usageCap(req: Request, res: Response, next: NextFunction) {
   const apiKey = req.headers['x-api-key'] as string;
   if (!apiKey) return res.status(401).send('API key required');
+
+  // Bypass usage limits for demo key
+  if (isDemoKey(apiKey)) {
+    return next();
+  }
 
   try {
     const { rows } = await pool.query(
