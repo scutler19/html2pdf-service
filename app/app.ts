@@ -64,7 +64,7 @@ async function init(): Promise<Express> {
   CronMiddleware.init();
 
   /* ── guards on /api/convert ───────────────────────────── */
-  app.use('/api/convert', concurrencyGuard); // NEW – limit parallel renders
+  // app.use('/api/convert', concurrencyGuard); // TEMPORARILY DISABLED – causing issues
   app.use('/api/convert', billingGuard);     // block paused/unpaid subs
   app.use('/api/convert', usageCap);         // 50-page free cap
   /* ------------------------------------------------------ */

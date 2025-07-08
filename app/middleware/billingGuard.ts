@@ -7,8 +7,10 @@ import { pool } from '../db';
  * Expects API key in the "X-API-KEY" header.
  */
 export async function billingGuard(req: Request, res: Response, next: NextFunction) {
+  console.log('🔐 billingGuard: Request received for', req.path);
   try {
     const apiKey = req.header('X-API-KEY');
+    console.log('🔐 billingGuard: API key present:', !!apiKey);
     if (!apiKey) {
       console.warn("Blocked convert (invalid key):", req.ip);
       return res.status(401).json({ error: 'invalid_api_key' });
