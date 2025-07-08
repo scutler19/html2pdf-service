@@ -4,6 +4,8 @@ services:
             context: ./app
             args:
                 - image=${WEB_IMAGE}
+                - CACHEBUST=${CACHEBUST:-1}
+                - BUILD_DATE=${BUILD_DATE:-$(date +%s)}
         container_name: ${WEB_CONTAINER_NAME}
         restart: always
         volumes:
