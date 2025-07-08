@@ -15,12 +15,11 @@ WORKDIR /app
 
 # Copy package files first for better caching
 COPY package.json ./
-COPY package-lock.json ./
 COPY tsconfig.json ./
 
-# Install dependencies and Playwright
-RUN npm ci --only=production && \
-    npm install ts-node && \
+# Install dependencies and Playwright (ignore lock file to avoid sync issues)
+RUN npm install --only=production --no-package-lock && \
+    npm install ts-node --no-package-lock && \
     npx playwright install chromium
 
 # Copy source code
