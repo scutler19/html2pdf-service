@@ -31,6 +31,19 @@ export async function init() {
       );
     `);
     console.log('✅ accounts table ensured');
+
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS subscriptions (
+        id              serial PRIMARY KEY,
+        api_key         text      UNIQUE NOT NULL,
+        subscription_id text      NOT NULL,
+        price_id        text      NOT NULL,
+        paused          boolean   DEFAULT false,
+        created_at      timestamptz DEFAULT now(),
+        updated_at      timestamptz DEFAULT now()
+      );
+    `);
+    console.log('✅ subscriptions table ensured');
     
     console.log('✅ Database initialization completed successfully');
   } catch (error) {

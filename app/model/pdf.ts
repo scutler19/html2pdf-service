@@ -12,23 +12,13 @@ export function randomInteger(min: number = 100000, max: number = 999999): numbe
 }
 
 export async function convertHtmlContentToPDF(options: { content: string, headerTemplate?: string, footerTemplate?: string, style?: string, format?: string, landscape?: boolean, width?: string | number, height?: string | number, margin?: { top?: string | number, left?: string | number, right?: string | number, bottom?: string | number }, filename?: string }): Promise<string> {
-  console.log('🔧 PDF model: Starting conversion...');
-  
   if (Global.isEmpty(options?.content)) {
     throw { status: 400, message: `Empty content cannot be empty` };
   }
 
-  console.log('🌐 PDF model: Launching browser...');
   const browser = await chromium.launch();
-  console.log('✅ PDF model: Browser launched');
-  
-  console.log('📄 PDF model: Creating new page...');
   const page = await browser.newPage();
-  console.log('✅ PDF model: Page created');
-
-  console.log('📝 PDF model: Setting content...');
   await page.setContent(options.content);
-  console.log('✅ PDF model: Content set');
 
   let title: string;
   if (options.filename) {
@@ -98,26 +88,17 @@ export async function convertHtmlContentToPDF(options: { content: string, header
     footerTemplate,
   };
 
-  console.log('🎨 PDF model: Adding styles...');
   await page.addStyleTag({ content: `${resetCSS}${defaultCSS}` });
 
   if (Global.isPopulated(options.style)) {
     await page.addStyleTag({ content: options.style });
   }
 
-  console.log('📱 PDF model: Emulating media...');
   await page.emulateMedia({ media: 'screen' });
-  
-  console.log('📄 PDF model: Generating PDF...');
   await page.pdf(optionsPDF);
-  console.log('✅ PDF model: PDF generated');
-  
-  console.log('🔒 PDF model: Closing browser...');
   await browser.close();
-  console.log('✅ PDF model: Browser closed');
 
   const result = `${URL}/public/pdf/${title}`;
-  console.log('🎯 PDF model: Returning result:', result);
   return result;
 }
 
