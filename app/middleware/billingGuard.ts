@@ -1,7 +1,6 @@
 // app/middleware/billingGuard.ts
 import { Request, Response, NextFunction } from 'express';
 import { pool } from '../db';
-import { isDemoKey } from '../config/demo';
 
 /**
  * Validates API key exists in accounts table, then blocks requests whose subscription is paused (payment failure).
@@ -16,7 +15,7 @@ export async function billingGuard(req: Request, res: Response, next: NextFuncti
     }
 
     // Bypass all checks for demo key
-    if (isDemoKey(apiKey)) {
+    if (apiKey === 'demo-unlimited-key-2024') {
       return next();
     }
 
