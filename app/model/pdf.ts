@@ -7,18 +7,35 @@ import { URL } from '../config/config';
 import * as Directory from './directory';
 import * as Global from './global';
 
+/** Max delay before PDF capture (ms). */
+export const DELAY_MS_MAX = 10_000;
+
 export function randomInteger(min: number = 100000, max: number = 999999): number {
   return Math.floor(Math.random() * (max - min)) + min;
 }
 
-export async function convertHtmlContentToPDF(options: { content: string, headerTemplate?: string, footerTemplate?: string, style?: string, format?: string, landscape?: boolean, width?: string | number, height?: string | number, margin?: { top?: string | number, left?: string | number, right?: string | number, bottom?: string | number }, filename?: string }): Promise<string> {
+export type ConvertHtmlToPdfOptions = {
+  content: string;
+  headerTemplate?: string;
+  footerTemplate?: string;
+  style?: string;
+  format?: string;
+  landscape?: boolean;
+  delayMs?: number;
+  width?: string | number;
+  height?: string | number;
+  margin?: { top?: string | number; left?: string | number; right?: string | number; bottom?: string | number };
+  filename?: string;
+};
+
+export async function convertHtmlContentToPDF(options: ConvertHtmlToPdfOptions): Promise<string> {
   if (Global.isEmpty(options?.content)) {
     throw { status: 400, message: `Empty content cannot be empty` };
   }
 
   const browser = await chromium.launch();
   const page = await browser.newPage();
-  await page.setContent(options.content);
+  await page.setContent(options.content, { waitUntil: 'networkidle' });
 
   let title: string;
   if (options.filename) {
@@ -73,7 +90,13 @@ export async function convertHtmlContentToPDF(options: { content: string, header
     format = options.format || 'A4';
   }
 
-  const landscape = options.landscape || false;
+  const landscape = options.landscape === true;
+  const delayMs =
+    options.delayMs !== undefined &&
+    Number.isFinite(options.delayMs) &&
+    options.delayMs >= 0
+      ? Math.min(Math.floor(options.delayMs), DELAY_MS_MAX)
+      : undefined;
 
   const optionsPDF = {
     path: destination,
@@ -83,6 +106,7 @@ export async function convertHtmlContentToPDF(options: { content: string, header
     margin,
     scale: 1,
     landscape,
+    printBackground: true,
     displayHeaderFooter,
     headerTemplate,
     footerTemplate,
@@ -94,7 +118,10 @@ export async function convertHtmlContentToPDF(options: { content: string, header
     await page.addStyleTag({ content: options.style });
   }
 
-  await page.emulateMedia({ media: 'screen' });
+  await page.emulateMedia({ media: 'print' });
+  if (delayMs !== undefined) {
+    await page.waitForTimeout(delayMs);
+  }
   await page.pdf(optionsPDF);
   await browser.close();
 
