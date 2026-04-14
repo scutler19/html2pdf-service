@@ -21,6 +21,7 @@ export type ConvertHtmlToPdfOptions = {
   style?: string;
   format?: string;
   landscape?: boolean;
+  printBackground?: boolean;
   delayMs?: number;
   width?: string | number;
   height?: string | number;
@@ -106,7 +107,7 @@ export async function convertHtmlContentToPDF(options: ConvertHtmlToPdfOptions):
     margin,
     scale: 1,
     landscape,
-    printBackground: true,
+    printBackground: options.printBackground ?? true,
     displayHeaderFooter,
     headerTemplate,
     footerTemplate,

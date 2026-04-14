@@ -62,6 +62,29 @@ function asBoolean(value: unknown): boolean | undefined {
   return undefined;
 }
 
+/** Optional `printBackground`; defaults to `true`; invalid values throw. */
+function asPrintBackground(value: unknown): boolean {
+  const v = unwrap(value);
+  if (v === undefined || v === null || v === '') {
+    return true;
+  }
+  if (v === true) {
+    return true;
+  }
+  if (v === false) {
+    return false;
+  }
+  if (typeof v === 'string') {
+    if (v === 'true') {
+      return true;
+    }
+    if (v === 'false') {
+      return false;
+    }
+  }
+  throw new BadInputError('printBackground');
+}
+
 function asOptionalNumber(value: unknown): number | undefined {
   const v = unwrap(value);
   if (v === undefined || v === null || v === '') {
@@ -137,6 +160,8 @@ function parsePdfConvertInput(source: Record<string, unknown>): PDF.ConvertHtmlT
 
   const landscape = asBoolean(source.landscape) ?? false;
 
+  const printBackground = asPrintBackground(source.printBackground);
+
   const delayMs = asOptionalNumber(source.delayMs);
 
   const width = asOptionalDimension(source.width, 'width');
@@ -164,6 +189,7 @@ function parsePdfConvertInput(source: Record<string, unknown>): PDF.ConvertHtmlT
   const options: PDF.ConvertHtmlToPdfOptions = {
     content,
     landscape,
+    printBackground,
   };
 
   if (headerTemplate !== undefined) {

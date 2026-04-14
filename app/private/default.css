@@ -1,6 +1,4 @@
 body {
-    -webkit-print-color-adjust: exact !important;
-    color-adjust: exact;
     font-size: 14px;
     font-family: Arial, sans-serif;
     color: #000;
