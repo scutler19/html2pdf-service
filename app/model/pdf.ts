@@ -19,7 +19,8 @@ export function randomInteger(min: number = 100000, max: number = 999999): numbe
 }
 
 export type ConvertHtmlToPdfOptions = {
-  content: string;
+  content?: string;
+  url?: string;
   headerTemplate?: string;
   footerTemplate?: string;
   style?: string;
@@ -38,7 +39,7 @@ export type ConvertHtmlToPdfOptions = {
 };
 
 export async function convertHtmlContentToPDF(options: ConvertHtmlToPdfOptions): Promise<string> {
-  if (Global.isEmpty(options?.content)) {
+  if (!options.url && Global.isEmpty(options?.content)) {
     throw { status: 400, message: `Empty content cannot be empty` };
   }
 
@@ -47,7 +48,16 @@ export async function convertHtmlContentToPDF(options: ConvertHtmlToPdfOptions):
     const page = await browser.newPage();
 
     const runConversionJob = async (): Promise<string> => {
-      await page.setContent(options.content, { waitUntil: 'networkidle' });
+      if (options.url) {
+        await page.goto(options.url, {
+          waitUntil: 'networkidle',
+          timeout: options.timeout,
+        });
+      } else {
+        await page.setContent(options.content as string, {
+          waitUntil: 'networkidle',
+        });
+      }
 
       let title: string;
       if (options.filename) {
@@ -125,7 +135,10 @@ export async function convertHtmlContentToPDF(options: ConvertHtmlToPdfOptions):
         footerTemplate,
       };
 
-      await page.addStyleTag({ content: `${resetCSS}${defaultCSS}` });
+      // HTML fragments need normalize typography; full URLs must keep the site's own CSS/fonts.
+      if (!options.url) {
+        await page.addStyleTag({ content: `${resetCSS}${defaultCSS}` });
+      }
 
       if (Global.isPopulated(options.style)) {
         await page.addStyleTag({ content: options.style });

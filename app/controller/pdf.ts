@@ -3,6 +3,7 @@ import fs from 'node:fs';
 import { pool } from '../db';
 
 import { Request, Response, Router } from 'express';
+import { assertSafeUrl } from '../lib/safeUrl';
 import * as PDF from '../model/pdf';
 
 export const router = Router();
@@ -211,8 +212,28 @@ function toParamRecord(input: unknown): Record<string, unknown> {
   return out;
 }
 
+function assertValidHttpOrHttpsUrl(urlString: string): void {
+  let parsed: URL;
+  try {
+    parsed = new URL(urlString);
+  } catch {
+    throw new BadInputError('url');
+  }
+  if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+    throw new BadInputError('url');
+  }
+  if (parsed.hostname === '') {
+    throw new BadInputError('url');
+  }
+}
+
 function parsePdfConvertInput(source: Record<string, unknown>): PDF.ConvertHtmlToPdfOptions {
-  const content = asRequiredString(source.html, 'html');
+  const htmlPresent = asOptionalString(source.html);
+  const urlPresent = asOptionalString(source.url);
+
+  if ((htmlPresent !== undefined) === (urlPresent !== undefined)) {
+    throw new BadInputError('html_or_url');
+  }
 
   const headerTemplate = asOptionalString(source.headerTemplate);
   const footerTemplate = asOptionalString(source.footerTemplate);
@@ -255,11 +276,17 @@ function parsePdfConvertInput(source: Record<string, unknown>): PDF.ConvertHtmlT
   }
 
   const options: PDF.ConvertHtmlToPdfOptions = {
-    content,
     landscape,
     preferCSSPageSize,
     printBackground,
   };
+
+  if (htmlPresent !== undefined) {
+    options.content = asRequiredString(source.html, 'html');
+  } else {
+    assertValidHttpOrHttpsUrl(urlPresent as string);
+    options.url = urlPresent as string;
+  }
 
   if (headerTemplate !== undefined) {
     options.headerTemplate = headerTemplate;
@@ -300,6 +327,9 @@ function parsePdfConvertInput(source: Record<string, unknown>): PDF.ConvertHtmlT
 
 async function respondWithPdf(res: Response, next: (err: unknown) => void, options: PDF.ConvertHtmlToPdfOptions, apiKey: string | string[] | undefined): Promise<void> {
   try {
+    if (options.url) {
+      await assertSafeUrl(options.url);
+    }
     const data = await PDF.convertHtmlContentToPDF(options);
     const localPath = path.join(process.cwd(), 'public', 'pdf', path.basename(data));
 
