@@ -168,8 +168,6 @@ function asOptionalScale(value: unknown): number | undefined {
   return n;
 }
 
-/** Optional job timeout (ms); strict integer in [TIMEOUT_MS_MIN, TIMEOUT_MS_MAX]. */
-/** Optional CSS selectors to hide in the PDF; omitted or empty array → undefined. */
 function asOptionalWaitForSelector(value: unknown): string | undefined {
   const v = unwrap(value);
   if (v === undefined || v === null) {
@@ -240,6 +238,7 @@ function asOptionalViewportDimension(value: unknown): number | undefined {
   return n;
 }
 
+/** Optional job timeout (ms); strict integer in [TIMEOUT_MS_MIN, TIMEOUT_MS_MAX]. */
 function asOptionalTimeoutMs(value: unknown): number | undefined {
   const v = unwrap(value);
   if (v === undefined || v === null || v === '') {

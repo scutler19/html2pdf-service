@@ -2,14 +2,14 @@
 import express, { Express } from 'express';
 import bodyParser from 'body-parser';
 
-import { MODE, PORT, URL } from './config/config';
+import { PORT } from './config/config';
 import { init as initDb }   from './db';
 
 /* middleware */
 import { usageCap       } from './middleware/usageCap';
 import { apiKeyGuard    } from './middleware/apiKeyGuard';
 import { billingGuard   } from './middleware/billingGuard';
-import { concurrencyGuard } from './middleware/concurrencyGuard';  // ← use existing file
+import { concurrencyGuard } from './middleware/concurrencyGuard';
 
 import * as AssetMiddleware     from './middleware/asset';
 import * as CronMiddleware      from './middleware/cron';

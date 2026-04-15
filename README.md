@@ -1,182 +1,201 @@
-# PDF Converter
+# html2pdf-service
 
-Based on [Playwright](https://github.com/microsoft/playwright), convert HTML content to PDF via API.
+Node.js + [Playwright](https://github.com/microsoft/playwright) service that turns HTML or a public URL into a PDF, with optional billing, usage caps, and Stripe integration.
+
+## Overview
+
+- **HTML mode**: supply raw HTML in the request. The service loads it in a headless Chromium page (with bundled reset/default CSS for fragments), then captures output.
+- **URL mode**: supply an `http` or `https` URL. The page is loaded in the browser, then captured the same way.
+
+You must send **exactly one** of `html` or `url`. Sending both or neither is rejected with `400` and `{"error":"Invalid input: html_or_url"}`.
+
+### Capture modes (`captureMode`)
+
+| Value | Behavior |
+|--------|----------|
+| `pdf` (default) | Native Playwright/Chromium **print PDF**. Best for structured documents, selectable text, and smaller files. Honors Playwright PDF options such as `scale`, `preferCSSPageSize`, and header/footer templates. |
+| `screenshot_pdf` | Full-page **PNG screenshot** of the rendered page, then embedded into a PDF (via `pdf-lib`). Long pages are split across multiple PDF pages when the image is taller than the printable area. Best for **visual fidelity** (complex CSS, canvas, “looks like the browser”) at the cost of a rasterized page (generally not selectable text). **`headerTemplate` / `footerTemplate` are not applied** in this mode (they only affect native PDF printing). **`scale`** is not passed through to screenshot capture (it applies to native `pdf` mode only). |
+
+### When to use viewport options
+
+`viewportWidth` and `viewportHeight` set the browser viewport **before** navigation or `setContent`. They are optional but especially useful for **responsive layouts** and for **`screenshot_pdf`**, where the visible layout drives the rasterized result. If you set one, you must set both (validated range: **320–3840** px, integers only).
 
 ## API
 
-Send GET request on `/api/convert`, like `https://myserver.com/api/convert?html=<h1>Hello</h1>`.  
-Support POST request on `/api/convert` with body data.  
+### `GET` or `POST` `/api/convert`
 
-Server will return url where document is available, example : `https://myserver.com/public/pdf/02132102983-533083.pdf`.
-Documents are deleted after 1 hour.  
+Both methods accept the same logical parameters.
 
-### Available options
+- **`GET`**: parameters come from the **query string** (fine for small payloads; long HTML hits URL length limits).
+- **`POST`**: send **`Content-Type: application/json`** (or URL-encoded form) with a JSON body (recommended for non-trivial HTML). Request bodies are limited to **2 MB** by the JSON/urlencoded parsers.
 
-#### Mandatory options
+Successful responses are a **direct PDF file download** (`Content-Disposition: attachment`), not a JSON object with a public URL.
 
-##### `html` \<string\>
-HTML template, ie: `<h1>Hello</h1>`
+### Authentication
 
-#### Optional options
-##### `marginTop` \<string | number\>
-Customize top margin for *html* content only, header/footer templates are not affected.  
-Can be number : `px` or string : `px`, `in`, `cm`, `mm`
+All `/api/convert` requests must include:
 
-##### `marginLeft` \<string | number\>
-Same as marginTop option
-
-##### `marginRight` \<string | number\>
-Same as marginTop option
-
-##### `marginBottom` \<string | number\>
-Same as marginTop option
-
-##### `headerTemplate` \<string | number\>
-HTML template, ie: `<div style="margin-left: 20px">header</div>`.  
-
-**Be careful** :  
-- Header template is not affected by content margin, so you have to specify it inside your HTML.
-- Image `src` tag in header template must be a _Base64_, it can't be a `http(s)://` link  (see [issue](https://github.com/puppeteer/puppeteer/issues/2443))
-- Header template is kinda "zoomed in", so you may have to lower font-sizes/widths/heights/margins/paddings values (ie: font-size: 11px -> font-size: 8px) (see [issue](https://github.com/puppeteer/puppeteer/issues/2104))
-
-Add tag with following classes to put content inside :  
-- date : formatted print date
-- title : document title
-- url : document location
-- pageNumber : current page number
-- totalPages : total pages in the document
-
-Example :
-```
-<div class="date"></div>
-<p><span class="pageNumber"></span>/<span class="totalPages"></span></p>
+```http
+X-API-KEY: <your-key>
 ```
 
-##### `footerTemplate` \<string\>
-Same as headerTemplate option
+**Env-approved keys** (comma-separated in `VALID_API_KEYS`): match any listed key → request proceeds; account/subscription checks and usage caps are **skipped** for that key (intended for operators and local dev).
 
-##### `style` \<string\>
-CSS rules
+Otherwise:
 
-##### `landscape` <'true'>
-Specify PDF orientation, by default it is portrait.  
-You can set at landscape with `'true'` value.  
+- Missing header → **`401`** JSON `{"error":"Missing API key"}`.
+- Unknown key → **`403`** JSON `{"error":"Invalid API key"}` (before DB-backed billing).
 
-##### `width` \<string\>
-Paper width, accepts values labeled with units.  
-Can be number : `px` or string : `px`, `in`, `cm`, `mm`
+If the key is not env-approved, middleware then requires a row in **`accounts`** and an active subscription (see **Billing / quotas** below).
 
-##### `height` \<string\>
-Paper height, accepts values labeled with units.  
-Can be number : `px` or string : `px`, `in`, `cm`, `mm`
+**Optional demo key**: if `ALLOW_DEMO_KEY=true`, the literal key `demo-unlimited-key-2024` is accepted like an env-approved key (billing bypass). Do not enable in production unless you intend to.
 
-##### `format` \<string\>
-Paper format. If set, takes priority over width or height options. Defaults to 'Letter'.  
-Values : 
-- `Letter` (8.5in x 11in)
-- `Legal` (8.5in x 14in)
-- `Tabloid` (11in x 17in)
-- `Ledger` (17in x 11in)
-- `A0` (33.1in x 46.8in)
-- `A1` (23.4in x 33.1in)
-- `A2` (16.54in x 23.4in)
-- `A3` (11.7in x 16.54in)
-- `A4` (8.27in x 11.7in)
-- `A5` (5.83in x 8.27in)
-- `A6` (4.13in x 5.83in)
+### Billing / quotas
 
-##### `filename` \<string\>
-Specify your own filename. PDF with same filenames will be overwritten. By default, it will be a unique generated name.
+For keys that are **not** env-approved (and not the demo key path above):
 
-## Usage
+- **`billingGuard`**: key must exist in `accounts`. If the subscription is paused, **`402`** with a payment message.
+- Invalid / unknown key at this stage → **`401`** JSON `{"error":"invalid_api_key"}`.
+- **`usageCap`**: free tier limits (per key, from `page_events`): **5 PDFs per day**, **50 per calendar month** → **`429`** plain-text body when exceeded.
 
-All `/api/convert` requests require a valid API key in the `X-API-KEY` header. Invalid or missing API keys will return HTTP 401 with `{error:"invalid_api_key"}`.
+Create a DB-backed key with **`POST /api/signup`** (optional `email`); response includes `apiKey` and `pages_per_month: 50`.
 
-## Production
+### Supported request options
 
-### Requirements
+Unless noted, options can be sent as JSON fields (`POST`) or query parameters (`GET`). Booleans accept JSON booleans or, where implemented, strings like `"true"` / `"false"` (see below).
 
-- Docker and docker-compose must be installed
+| Field | Type | Description |
+|--------|------|-------------|
+| **`html`** | string | Raw HTML document or fragment. **Mutually exclusive with `url`.** |
+| **`url`** | string | `http:` or `https:` URL to open. Hostname is resolved and **private/reserved IPs are blocked** (SSRF mitigation: loopback, RFC1918, link-local, etc.). |
+| **`format`** | string | Paper format name when `width`+`height` are not both set (e.g. `A4`, `Letter`). Case-insensitive; unknown values fall back to **A4**. Default in the renderer when omitted: **A4**. |
+| **`width`** | string \| number | Paper width (e.g. `8.5in`, `210mm`, or a number treated as inches in the PDF pipeline). Used with `height` when both are set. |
+| **`height`** | string \| number | Paper height (same unit rules as `width`). |
+| **`landscape`** | boolean | If true, landscape orientation. Default **false**. |
+| **`marginTop`**, **`marginLeft`**, **`marginRight`**, **`marginBottom`** | string \| number | Content margins; numbers are treated as **px** in the Playwright path; strings may include units (`px`, `in`, `cm`, `mm`, etc.). Defaults in the renderer: **20** (px) per side when omitted. |
+| **`headerTemplate`** | string | Playwright PDF header HTML (native **`pdf`** mode only). |
+| **`footerTemplate`** | string | Playwright PDF footer HTML (native **`pdf`** mode only). |
+| **`style`** | string | Extra CSS injected via `addStyleTag`. |
+| **`delayMs`** | number | Extra wait after load / `waitForSelector` / hide rules, before capture. Clamped to **0–10000** ms. |
+| **`timeout`** | integer | If set, whole conversion is wrapped in a wall-clock timeout (**1–30000** ms). On expiry → **`504`** with body `PDF generation timed out`. Also passed to `waitForSelector` when that option is used. **`page.goto` uses this timeout**; **`setContent`** for HTML mode does not receive the same Playwright timeout argument (the outer job timeout still applies to the full job). |
+| **`scale`** | number | Playwright PDF scale (**0.1–2**). Native **`pdf`** mode only (ignored for **`screenshot_pdf`** raster capture). Default **1**. |
+| **`printBackground`** | boolean | Print background graphics. Default **true**. Invalid values → `400` `Invalid input: printBackground`. |
+| **`preferCSSPageSize`** | boolean | Prefer `@page` size from CSS. Default **false**. |
+| **`hideSelectors`** | string \| string[] | CSS selectors to hide before capture (injected rule: `display: none !important`). Useful for cookie banners or chrome. Empty strings rejected. |
+| **`waitForSelector`** | string | Wait for this selector before `delayMs` and capture. Non-string or blank → `400`. |
+| **`mediaType`** | `"print"` \| `"screen"` | Playwright media emulation before capture. Omit for **print**. Invalid values → `400`. |
+| **`viewportWidth`**, **`viewportHeight`** | integer | Browser viewport. Must appear together or neither. Range **320–3840**. |
+| **`captureMode`** | `"pdf"` \| `"screenshot_pdf"` | See **Capture modes** above. Invalid values → `400`. |
+| **`filename`** | string | Base name for the generated file (sanitized); extension `.pdf` added. Default: timestamp-based unique name. |
 
-### Configuration
+**Invalid inputs** generally return **`400`** with JSON `{"error":"Invalid input: <field>"}` (e.g. `html_or_url`, `url`, `scale`, `viewport`, `timeout`, `captureMode`, `mediaType`, `printBackground`, `hideSelectors`, `waitForSelector`).
 
-- Docker Environment file `.env` must be present to project's root
-- Node configuration file `config.ts` must be present into `app/config` folder
+**URL safety**: only `http`/`https`, non-empty host, and resolved addresses that are not blocked (see `app/lib/safeUrl.ts`). Violations → **`403`** with body `URL not allowed`.
 
-### Production Features
+### Other endpoints
 
-- ✅ **Dynamic PORT configuration** for Render deployment
-- ✅ **API key validation** with database lookup
-- ✅ **Comprehensive error handling** and logging
-- ✅ **Usage metering** and billing integration
-- ✅ **Concurrency control** to prevent resource exhaustion
-- ✅ **Security middleware** with CORS and Helmet
-- ✅ **Health check endpoints** for monitoring
-- ✅ **Automatic PDF cleanup** via cron jobs
-- ✅ **Docker optimization** with Playwright base image
-- ✅ **Production-ready middleware** with proper error handling
-- ✅ **Database schema** with accounts and subscriptions tables
+| Method | Path | Purpose |
+|--------|------|---------|
+| `GET` | `/health` | JSON status, port, timestamp (no API key). |
+| `GET` | `/` | Minimal service metadata. |
+| `POST` | `/api/signup` | Create account + API key (JSON body, optional `email`). |
 
-### Testing Production Readiness
+Stripe routes (`/api/subscribe`, billing portal, `/webhook/stripe`) require `STRIPE_KEY` (and related secrets); without them those flows return **503** as implemented in the billing controllers.
 
-Run the comprehensive test suite to verify all components:
+## Local development (Docker)
 
-```bash
-# Test against local server
-node test-production-readiness.js
-
-# Test against deployed server
-TEST_URL=https://your-app.onrender.com node test-production-readiness.js
-```
-
-### Launch
-
-```
-docker-compose down
-docker-compose build
-docker-compose up
-```
-
-## Development
-
-### Requirements
-
-- Node.js must be installed
-
-### Configuration
-
-- Docker Environment file `.env` must be present to project's root
-- Node configuration file `config.ts` must be present into `app/config` folder
-
-### Local Docker (app + Postgres)
-
-Use this when you want the full stack in containers on **http://localhost:3000** without touching production `docker-compose.yml` or wiring a remote database.
+Full stack: app + Postgres on **http://localhost:3000**, without using production `docker-compose.yml` or injecting root `.env` into the web container.
 
 ```bash
 docker compose -f docker-compose.local.yml up --build
 ```
 
-- **Postgres** starts with a named volume (`html2pdf_local_pgdata`); `DATABASE_URL` inside the compose file always points at this service (your root `.env` Render URL is ignored for DB).
+- **Postgres**: user/password/db `fileslap` / `fileslap` / `fileslap`; data in volume **`html2pdf_local_pgdata`**. `DATABASE_URL` inside the web service is **forced** to the local Postgres URL by compose (a root `.env` pointing at Render is ignored for DB).
+- **Optional env file**: copy **`.env.local.example`** to **`.env.local`** in the project root. Compose loads `.env.local` when present (still not the root `.env`). Add at least **`VALID_API_KEYS=my-dev-key`** (or similar) so `/api/convert` accepts your key without DB seeding, or use **`ALLOW_DEMO_KEY=true`** and the demo key (see Authentication).
 - **Health**: `GET http://localhost:3000/health`
 - **Stop**: `Ctrl+C` or `docker compose -f docker-compose.local.yml down`
-- **Reset DB data**: `docker compose -f docker-compose.local.yml down -v` (removes the named volume)
+- **Reset DB volume**: `docker compose -f docker-compose.local.yml down -v`
 
-Optional Stripe (subscribe, billing, webhooks): copy `.env.local.example` to `.env.local` in the project root and add real test keys from the Stripe dashboard. The next `docker compose -f docker-compose.local.yml up --build` picks up `.env.local` automatically; your root `.env` (for example Render) is not injected into this stack.
+Ensure **`app/config/config.ts`** exists (copy from **`app/config/config.ts.default`** if needed).
 
-If `STRIPE_KEY` is unset, the app still starts; those routes return **503** until a key is provided.
+### Non-Docker Node run
 
-Ensure `app/config/config.ts` exists (copy from `app/config/config.ts.default` if needed).
-
-### Before launch
-
-```
+```bash
 cd app
-npm i
+npm install
+npx tsc && node app.js
 ```
 
-### Launch
+Set `DATABASE_URL`, `PORT`, `VALID_API_KEYS`, etc. in the environment as required.
 
+## Production / deployment notes
+
+- **Docker**: production-oriented **`docker-compose.yml`** expects an external Docker network named **`main`** and bind-mounts source paths; set **`WEB_IMAGE`**, **`WEB_CONTAINER_NAME`**, and a root **`.env`** as used by your environment.
+- **App image**: see **`app/Dockerfile`** (Node 18, Chromium via Playwright).
+- **Environment**: at minimum **`DATABASE_URL`**, **`VALID_API_KEYS`** (or demo flag for non-prod only), and secrets for Stripe if you use billing. Optional **`CONVERT_CONCURRENCY`** (default **4**) limits parallel conversions.
+
+## PDF retention
+
+A cron job can clean **`public/pdf`** of files older than one hour (see `app/middleware/cron.ts` and `model/pdf.ts` `cleaner`). `ENABLE_CRON` in config controls whether cron is wired on startup.
+
+## Examples (`curl`)
+
+Replace `YOUR_KEY` with a value from `VALID_API_KEYS`, a signup key, or the demo key where enabled.
+
+### HTML → PDF (POST JSON)
+
+```bash
+curl -sS -o out.pdf -X POST 'http://localhost:3000/api/convert' \
+  -H 'X-API-KEY: YOUR_KEY' \
+  -H 'Content-Type: application/json' \
+  -d '{"html":"<h1>Hello</h1><p>From HTML mode.</p>"}'
 ```
-cd app
-tsc && node app.js
+
+### URL → PDF
+
+```bash
+curl -sS -o out.pdf -X POST 'http://localhost:3000/api/convert' \
+  -H 'X-API-KEY: YOUR_KEY' \
+  -H 'Content-Type: application/json' \
+  -d '{"url":"https://example.com"}'
 ```
+
+### `screenshot_pdf` (visual fidelity)
+
+```bash
+curl -sS -o out-screenshot.pdf -X POST 'http://localhost:3000/api/convert' \
+  -H 'X-API-KEY: YOUR_KEY' \
+  -H 'Content-Type: application/json' \
+  -d '{"url":"https://example.com","captureMode":"screenshot_pdf","viewportWidth":1280,"viewportHeight":720}'
+```
+
+### `hideSelectors` (banner / overlay)
+
+```bash
+curl -sS -o out.pdf -X POST 'http://localhost:3000/api/convert' \
+  -H 'X-API-KEY: YOUR_KEY' \
+  -H 'Content-Type: application/json' \
+  -d '{"url":"https://example.com","hideSelectors":["#cookie-banner",".modal-overlay"]}'
+```
+
+### `waitForSelector`
+
+```bash
+curl -sS -o out.pdf -X POST 'http://localhost:3000/api/convert' \
+  -H 'X-API-KEY: YOUR_KEY' \
+  -H 'Content-Type: application/json' \
+  -d '{"url":"https://example.com","waitForSelector":"main","timeout":20000}'
+```
+
+### `timeout` (job fails fast)
+
+```bash
+curl -sS -o out.pdf -X POST 'http://localhost:3000/api/convert' \
+  -H 'X-API-KEY: YOUR_KEY' \
+  -H 'Content-Type: application/json' \
+  -d '{"url":"https://example.com","timeout":5000}'
+```
+
+## License
+
+See repository license if present; otherwise treat as project-private.
