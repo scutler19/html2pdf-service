@@ -1,4 +1,5 @@
 import { NextFunction, Request, Response } from 'express';
+import { setConvertFailureType } from './convertObservability';
 
 const DEMO_API_KEY = 'demo-unlimited-key-2024';
 export const BILLING_BYPASS_LOCALS_KEY = 'skipBillingValidation';
@@ -24,6 +25,7 @@ export function apiKeyGuard(req: Request, res: Response, next: NextFunction): Re
   const apiKey = req.header('X-API-KEY');
 
   if (!apiKey) {
+    setConvertFailureType(res, 'auth');
     return res.status(401).json({ error: 'Missing API key' });
   }
 
@@ -39,5 +41,6 @@ export function apiKeyGuard(req: Request, res: Response, next: NextFunction): Re
     return next();
   }
 
+  setConvertFailureType(res, 'auth');
   return res.status(403).json({ error: 'Invalid API key' });
 }

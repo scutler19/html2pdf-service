@@ -2,6 +2,7 @@
 import { Request, Response, NextFunction } from 'express';
 import { pool } from '../db';
 import { BILLING_BYPASS_LOCALS_KEY } from './apiKeyGuard';
+import { setConvertFailureType } from './convertObservability';
 
 // free-tier limits
 const MAX_PDFS_MONTH = 50;
@@ -12,7 +13,10 @@ const DEMO_API_KEY = 'demo-unlimited-key-2024';
 
 export async function usageCap(req: Request, res: Response, next: NextFunction) {
   const apiKey = req.headers['x-api-key'] as string;
-  if (!apiKey) return res.status(401).send('API key required');
+  if (!apiKey) {
+    setConvertFailureType(res, 'auth');
+    return res.status(401).json({ error: 'API key required' });
+  }
 
   // Env-approved local/dev keys should skip quota enforcement.
   if (res.locals[BILLING_BYPASS_LOCALS_KEY] === true) {
@@ -38,12 +42,19 @@ export async function usageCap(req: Request, res: Response, next: NextFunction) 
 
     const { pages_day, pages_month } = rows[0];
 
-    if (pages_day   >= MAX_PDFS_DAY)   return res.status(429).send('Daily free limit reached');
-    if (pages_month >= MAX_PDFS_MONTH) return res.status(429).send('Monthly free limit reached');
+    if (pages_day >= MAX_PDFS_DAY) {
+      setConvertFailureType(res, 'usage_cap');
+      return res.status(429).json({ error: 'Daily free limit reached' });
+    }
+    if (pages_month >= MAX_PDFS_MONTH) {
+      setConvertFailureType(res, 'usage_cap');
+      return res.status(429).json({ error: 'Monthly free limit reached' });
+    }
 
     return next();
   } catch (err) {
     console.error('usageCap error', err);
-    return res.status(500).send('Usage check failed');
+    setConvertFailureType(res, 'internal');
+    return res.status(500).json({ error: 'Usage check failed' });
   }
 }

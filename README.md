@@ -56,7 +56,7 @@ For keys that are **not** env-approved (and not the demo key path above):
 
 - **`billingGuard`**: key must exist in `accounts`. If the subscription is paused, **`402`** with a payment message.
 - Invalid / unknown key at this stage → **`401`** JSON `{"error":"invalid_api_key"}`.
-- **`usageCap`**: free tier limits (per key, from `page_events`): **5 PDFs per day**, **50 per calendar month** → **`429`** plain-text body when exceeded.
+- **`usageCap`**: free tier limits (per key, from `page_events`): **5 PDFs per day**, **50 per calendar month** → **`429`** JSON `{"error":"Daily free limit reached"}` or `{"error":"Monthly free limit reached"}`.
 
 Create a DB-backed key with **`POST /api/signup`** (optional `email`); response includes `apiKey` and `pages_per_month: 50`.
 
@@ -76,21 +76,23 @@ Unless noted, options can be sent as JSON fields (`POST`) or query parameters (`
 | **`headerTemplate`** | string | Playwright PDF header HTML (native **`pdf`** mode only). |
 | **`footerTemplate`** | string | Playwright PDF footer HTML (native **`pdf`** mode only). |
 | **`style`** | string | Extra CSS injected via `addStyleTag`. |
-| **`delayMs`** | number | Extra wait after load / `waitForSelector` / hide rules, before capture. Clamped to **0–10000** ms. |
-| **`timeout`** | integer | If set, whole conversion is wrapped in a wall-clock timeout (**1–30000** ms). On expiry → **`504`** with body `PDF generation timed out`. Also passed to `waitForSelector` when that option is used. **`page.goto` uses this timeout**; **`setContent`** for HTML mode does not receive the same Playwright timeout argument (the outer job timeout still applies to the full job). |
+| **`delayMs`** | number | Extra wait after load / `waitForSelector`, before selector mutations and capture. Clamped to **0–10000** ms. |
+| **`timeout`** | integer | If set, whole conversion is wrapped in a wall-clock timeout (**1–30000** ms). On expiry → **`504`** JSON `{"error":"PDF generation timed out"}`. Also passed to `waitForSelector` when that option is used. **`page.goto` uses this timeout**; **`setContent`** for HTML mode does not receive the same Playwright timeout argument (the outer job timeout still applies to the full job). |
 | **`scale`** | number | Playwright PDF scale (**0.1–2**). Native **`pdf`** mode only (ignored for **`screenshot_pdf`** raster capture). Default **1**. |
 | **`printBackground`** | boolean | Print background graphics. Default **true**. Invalid values → `400` `Invalid input: printBackground`. |
 | **`preferCSSPageSize`** | boolean | Prefer `@page` size from CSS. Default **false**. |
 | **`hideSelectors`** | string \| string[] | CSS selectors to hide before capture (injected rule: `display: none !important`). Useful for cookie banners or chrome. Empty strings rejected. |
-| **`waitForSelector`** | string | Wait for this selector before `delayMs` and capture. Non-string or blank → `400`. |
+| **`removeSelectors`** | string \| string[] | CSS selectors to remove from the DOM before capture. Useful when hidden elements still affect layout/flow. Empty strings rejected. |
+| **`waitForSelector`** | string | Wait for this selector before `delayMs`, selector mutations, and capture. Non-string or blank → `400`. |
+| **`waitUntil`** | `"load"` \| `"domcontentloaded"` \| `"networkidle"` | URL mode only: passed to `page.goto` navigation readiness. Default is **`networkidle`** when omitted. Ignored for HTML input mode (`setContent` path). Invalid values → `400`. |
 | **`mediaType`** | `"print"` \| `"screen"` | Playwright media emulation before capture. Omit for **print**. Invalid values → `400`. |
 | **`viewportWidth`**, **`viewportHeight`** | integer | Browser viewport. Must appear together or neither. Range **320–3840**. |
 | **`captureMode`** | `"pdf"` \| `"screenshot_pdf"` | See **Capture modes** above. Invalid values → `400`. |
 | **`filename`** | string | Base name for the generated file (sanitized); extension `.pdf` added. Default: timestamp-based unique name. |
 
-**Invalid inputs** generally return **`400`** with JSON `{"error":"Invalid input: <field>"}` (e.g. `html_or_url`, `url`, `scale`, `viewport`, `timeout`, `captureMode`, `mediaType`, `printBackground`, `hideSelectors`, `waitForSelector`).
+**Invalid inputs** generally return **`400`** with JSON `{"error":"Invalid input: <field>"}` (e.g. `html_or_url`, `url`, `scale`, `viewport`, `timeout`, `captureMode`, `mediaType`, `printBackground`, `hideSelectors`, `removeSelectors`, `waitForSelector`, `waitUntil`).
 
-**URL safety**: only `http`/`https`, non-empty host, and resolved addresses that are not blocked (see `app/lib/safeUrl.ts`). Violations → **`403`** with body `URL not allowed`.
+**URL safety**: only `http`/`https`, non-empty host, and resolved addresses that are not blocked (see `app/lib/safeUrl.ts`). Violations → **`403`** JSON `{"error":"URL not allowed"}`.
 
 ### Other endpoints
 
@@ -132,7 +134,53 @@ Set `DATABASE_URL`, `PORT`, `VALID_API_KEYS`, etc. in the environment as require
 
 - **Docker**: production-oriented **`docker-compose.yml`** expects an external Docker network named **`main`** and bind-mounts source paths; set **`WEB_IMAGE`**, **`WEB_CONTAINER_NAME`**, and a root **`.env`** as used by your environment.
 - **App image**: see **`app/Dockerfile`** (Node 18, Chromium via Playwright).
-- **Environment**: at minimum **`DATABASE_URL`**, **`VALID_API_KEYS`** (or demo flag for non-prod only), and secrets for Stripe if you use billing. Optional **`CONVERT_CONCURRENCY`** (default **4**) limits parallel conversions.
+- **Environment**: at minimum **`DATABASE_URL`**, **`VALID_API_KEYS`** (or demo flag for non-prod only), and secrets for Stripe if you use billing. Optional **`CONVERT_CONCURRENCY`** (default **5**) limits parallel conversions.
+
+### `/api/convert` operational logs
+
+The service now emits structured server logs for convert requests:
+- `request_start` when a convert request enters `/api/convert`
+- `request_failure` when an error path is handled
+- `request_finish` on response completion (includes `status`, `outcome`, `durationMs`, and `bytes` when available)
+
+Logs include conservative request context only (for example: `inputMode`, `targetHost`, `captureMode`, `timeout`, `waitUntil`, `viewport`, and selector-usage booleans). Raw HTML, full request bodies, API keys, and selector values are not logged.
+
+## Concurrency validation (local)
+
+Use the helper script to send overlapping requests and confirm that the conversion cap is enforced.
+
+```bash
+cd app
+BASE_URL=http://localhost:3000 \
+API_KEY=my-dev-key \
+TOTAL_REQUESTS=6 \
+DELAY_MS=7000 \
+bash scripts/validate-concurrency.sh
+```
+
+Recommended test setup:
+
+1. Start service with a low cap, for example `CONVERT_CONCURRENCY=2`.
+2. Run the script above.
+3. In service logs, confirm each `[concurrencyGuard] start ...` has a matching `[concurrencyGuard] finish ...`, and the final active count returns to `active=0/2`.
+
+## Convert error validation (local)
+
+Run a quick manual check for representative `/api/convert` error responses:
+
+```bash
+cd app
+BASE_URL=http://localhost:3000 \
+API_KEY=my-dev-key \
+bash scripts/validate-convert-errors.sh
+```
+
+The script prints one line per case with status code and JSON body for:
+- missing API key
+- invalid input (`html` + `url` together)
+- invalid API key
+- blocked URL (`127.0.0.1`)
+- timeout (`timeout=1`)
 
 ## PDF retention
 
@@ -176,6 +224,15 @@ curl -sS -o out.pdf -X POST 'http://localhost:3000/api/convert' \
   -H 'X-API-KEY: YOUR_KEY' \
   -H 'Content-Type: application/json' \
   -d '{"url":"https://example.com","hideSelectors":["#cookie-banner",".modal-overlay"]}'
+```
+
+### `removeSelectors` (remove nodes before capture)
+
+```bash
+curl -sS -o out.pdf -X POST 'http://localhost:3000/api/convert' \
+  -H 'X-API-KEY: YOUR_KEY' \
+  -H 'Content-Type: application/json' \
+  -d '{"url":"https://example.com","removeSelectors":["#cookie-banner",".modal-overlay"]}'
 ```
 
 ### `waitForSelector`

@@ -2,6 +2,7 @@
 import { Request, Response, NextFunction } from 'express';
 import { pool } from '../db';
 import { BILLING_BYPASS_LOCALS_KEY } from './apiKeyGuard';
+import { setConvertFailureType } from './convertObservability';
 
 /**
  * Validates API key exists in accounts table, then blocks requests whose subscription is paused (payment failure).
@@ -12,6 +13,7 @@ export async function billingGuard(req: Request, res: Response, next: NextFuncti
     const apiKey = req.header('X-API-KEY');
     if (!apiKey) {
       console.warn("Blocked convert (invalid key):", req.ip);
+      setConvertFailureType(res, 'auth');
       return res.status(401).json({ error: 'invalid_api_key' });
     }
 
@@ -33,6 +35,7 @@ export async function billingGuard(req: Request, res: Response, next: NextFuncti
 
     if (accountResult.rows.length === 0) {
       console.warn("Blocked convert (invalid key):", req.ip);
+      setConvertFailureType(res, 'auth');
       return res.status(401).json({ error: 'invalid_api_key' });
     }
 
@@ -43,6 +46,7 @@ export async function billingGuard(req: Request, res: Response, next: NextFuncti
     );
 
     if (rows.length && rows[0].paused) {
+      setConvertFailureType(res, 'auth');
       return res
         .status(402)                       // Payment Required
         .json({ error: 'Subscription payment failed. Update your card in the billing portal.' });

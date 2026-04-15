@@ -208,8 +208,12 @@ export type ConvertHtmlToPdfOptions = {
   timeout?: number;
   /** Wait for this selector to exist before delay/hideSelectors/pdf. */
   waitForSelector?: string;
+  /** Playwright URL navigation readiness state (`page.goto` only). */
+  waitUntil?: 'load' | 'domcontentloaded' | 'networkidle';
   /** CSS selectors to hide (injected as a style rule before PDF capture). */
   hideSelectors?: string[];
+  /** CSS selectors to remove from the DOM before PDF capture. */
+  removeSelectors?: string[];
   /** Playwright media emulation; omitted defaults to print. */
   mediaType?: 'print' | 'screen';
   /** Browser viewport before load; both must be set together, validated in controller. */
@@ -238,7 +242,7 @@ export async function convertHtmlContentToPDF(options: ConvertHtmlToPdfOptions):
     const runConversionJob = async (): Promise<string> => {
       if (options.url) {
         await page.goto(options.url, {
-          waitUntil: 'networkidle',
+          waitUntil: options.waitUntil ?? 'networkidle',
           timeout: options.timeout,
         });
       } else {
@@ -347,6 +351,15 @@ export async function convertHtmlContentToPDF(options: ConvertHtmlToPdfOptions):
         await page.addStyleTag({
           content: `${selectorList} { display: none !important; visibility: hidden !important; }`,
         });
+      }
+
+      if (options.removeSelectors !== undefined && options.removeSelectors.length > 0) {
+        await page.evaluate((selectors: string[]) => {
+          for (const selector of selectors) {
+            const nodes = document.querySelectorAll(selector);
+            nodes.forEach((node) => node.remove());
+          }
+        }, options.removeSelectors);
       }
 
       const captureMode = options.captureMode ?? 'pdf';

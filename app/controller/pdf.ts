@@ -5,6 +5,11 @@ import { pool } from '../db';
 import { Request, Response, Router } from 'express';
 import { assertSafeUrl } from '../lib/safeUrl';
 import * as PDF from '../model/pdf';
+import {
+  CONVERT_REQUEST_ID_LOCALS_KEY,
+  setConvertBytes,
+  setConvertFailureType,
+} from '../middleware/convertObservability';
 
 export const router = Router();
 
@@ -183,6 +188,18 @@ function asOptionalWaitForSelector(value: unknown): string | undefined {
   return t;
 }
 
+/** Optional `waitUntil` for URL navigation only. */
+function asOptionalWaitUntil(value: unknown): 'load' | 'domcontentloaded' | 'networkidle' | undefined {
+  const v = unwrap(value);
+  if (v === undefined || v === null || v === '') {
+    return undefined;
+  }
+  if (v === 'load' || v === 'domcontentloaded' || v === 'networkidle') {
+    return v;
+  }
+  throw new BadInputError('waitUntil');
+}
+
 function asOptionalHideSelectors(value: unknown): string[] | undefined {
   if (value === undefined || value === null || value === '') {
     return undefined;
@@ -209,6 +226,34 @@ function asOptionalHideSelectors(value: unknown): string[] | undefined {
     return out.length > 0 ? out : undefined;
   }
   throw new BadInputError('hideSelectors');
+}
+
+function asOptionalRemoveSelectors(value: unknown): string[] | undefined {
+  if (value === undefined || value === null || value === '') {
+    return undefined;
+  }
+  if (typeof value === 'string') {
+    const t = value.trim();
+    if (t === '') {
+      throw new BadInputError('removeSelectors');
+    }
+    return [t];
+  }
+  if (Array.isArray(value)) {
+    const out: string[] = [];
+    for (const item of value) {
+      if (typeof item !== 'string') {
+        throw new BadInputError('removeSelectors');
+      }
+      const t = item.trim();
+      if (t === '') {
+        throw new BadInputError('removeSelectors');
+      }
+      out.push(t);
+    }
+    return out.length > 0 ? out : undefined;
+  }
+  throw new BadInputError('removeSelectors');
 }
 
 const VIEWPORT_MIN = 320;
@@ -349,7 +394,11 @@ function parsePdfConvertInput(source: Record<string, unknown>): PDF.ConvertHtmlT
 
   const hideSelectors = asOptionalHideSelectors(source.hideSelectors);
 
+  const removeSelectors = asOptionalRemoveSelectors(source.removeSelectors);
+
   const waitForSelector = asOptionalWaitForSelector(source.waitForSelector);
+
+  const waitUntil = asOptionalWaitUntil(source.waitUntil);
 
   const mediaType = asOptionalMediaType(source.mediaType);
 
@@ -424,8 +473,14 @@ function parsePdfConvertInput(source: Record<string, unknown>): PDF.ConvertHtmlT
   if (hideSelectors !== undefined) {
     options.hideSelectors = hideSelectors;
   }
+  if (removeSelectors !== undefined) {
+    options.removeSelectors = removeSelectors;
+  }
   if (waitForSelector !== undefined) {
     options.waitForSelector = waitForSelector;
+  }
+  if (waitUntil !== undefined) {
+    options.waitUntil = waitUntil;
   }
   if (mediaType !== undefined) {
     options.mediaType = mediaType;
@@ -466,7 +521,11 @@ async function respondWithPdf(res: Response, next: (err: unknown) => void, optio
         'INSERT INTO page_events (api_key, pages, bytes) VALUES ($1, $2, $3)',
         [apiKey, pages, bytes]
       );
-      console.log(`📊 logged ${bytes} B for ${apiKey}`);
+      setConvertBytes(res, bytes);
+      const requestId = res.locals[CONVERT_REQUEST_ID_LOCALS_KEY];
+      console.log(
+        `[convert-metering] requestId=${typeof requestId === 'string' ? requestId : 'unknown'} bytes=${bytes}`,
+      );
     } catch (err) {
       console.error('metering insert failed', err);
     }
@@ -482,6 +541,7 @@ router.get('/api/convert', async (req: Request, res: Response, next: any) => {
     options = parsePdfConvertInput(toParamRecord(req.query));
   } catch (err) {
     if (isBadInputError(err)) {
+      setConvertFailureType(res, 'invalid_input');
       return res.status(400).json({ error: `Invalid input: ${err.field}` });
     }
     return next(err);
@@ -497,6 +557,7 @@ router.post('/api/convert', async (req: Request, res: Response, next: any) => {
     options = parsePdfConvertInput(toParamRecord(req.body));
   } catch (err) {
     if (isBadInputError(err)) {
+      setConvertFailureType(res, 'invalid_input');
       return res.status(400).json({ error: `Invalid input: ${err.field}` });
     }
     return next(err);

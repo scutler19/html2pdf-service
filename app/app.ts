@@ -10,6 +10,7 @@ import { usageCap       } from './middleware/usageCap';
 import { apiKeyGuard    } from './middleware/apiKeyGuard';
 import { billingGuard   } from './middleware/billingGuard';
 import { concurrencyGuard } from './middleware/concurrencyGuard';
+import { convertObservability } from './middleware/convertObservability';
 
 import * as AssetMiddleware     from './middleware/asset';
 import * as CronMiddleware      from './middleware/cron';
@@ -65,6 +66,7 @@ async function init(): Promise<Express> {
   CronMiddleware.init();
 
   /* ── guards on /api/convert ───────────────────────────── */
+  app.use('/api/convert', convertObservability); // request-scoped convert logs
   app.use('/api/convert', apiKeyGuard);
   app.use('/api/convert', concurrencyGuard); // limit parallel renders
   app.use('/api/convert', billingGuard);     // block paused/unpaid subs
