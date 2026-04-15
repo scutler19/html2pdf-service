@@ -2,8 +2,7 @@
 import { Router, Request, Response, NextFunction } from 'express';
 import Stripe from 'stripe';
 import { pool } from '../db';
-
-const stripe = new Stripe(process.env.STRIPE_KEY!, { apiVersion: '2024-04-10' });
+import { getStripe } from '../lib/stripeClient';
 
 /** choose secret by live/test mode */
 function chooseSecret(live: boolean): string {
@@ -19,6 +18,11 @@ export const router = Router();
  * (mounted with express.raw in app.ts)
  */
 router.post('/', async (req: Request, res: Response, next: NextFunction) => {
+  const stripe = getStripe();
+  if (!stripe) {
+    return res.status(503).send('Webhook unavailable: STRIPE_KEY not configured');
+  }
+
   const sig = req.headers['stripe-signature'] as string;
   let event: Stripe.Event;
 

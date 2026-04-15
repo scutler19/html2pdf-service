@@ -148,6 +148,25 @@ docker-compose up
 - Docker Environment file `.env` must be present to project's root
 - Node configuration file `config.ts` must be present into `app/config` folder
 
+### Local Docker (app + Postgres)
+
+Use this when you want the full stack in containers on **http://localhost:3000** without touching production `docker-compose.yml` or wiring a remote database.
+
+```bash
+docker compose -f docker-compose.local.yml up --build
+```
+
+- **Postgres** starts with a named volume (`html2pdf_local_pgdata`); `DATABASE_URL` inside the compose file always points at this service (your root `.env` Render URL is ignored for DB).
+- **Health**: `GET http://localhost:3000/health`
+- **Stop**: `Ctrl+C` or `docker compose -f docker-compose.local.yml down`
+- **Reset DB data**: `docker compose -f docker-compose.local.yml down -v` (removes the named volume)
+
+Optional Stripe (subscribe, billing, webhooks): copy `.env.local.example` to `.env.local` in the project root and add real test keys from the Stripe dashboard. The next `docker compose -f docker-compose.local.yml up --build` picks up `.env.local` automatically; your root `.env` (for example Render) is not injected into this stack.
+
+If `STRIPE_KEY` is unset, the app still starts; those routes return **503** until a key is provided.
+
+Ensure `app/config/config.ts` exists (copy from `app/config/config.ts.default` if needed).
+
 ### Before launch
 
 ```

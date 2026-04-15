@@ -1,25 +1,24 @@
 // app/controller/subscribe.ts
 import { Router, Request, Response, NextFunction } from 'express';
-import Stripe from 'stripe';
-
-const stripe = new Stripe(process.env.STRIPE_KEY!, { apiVersion: '2024-04-10' });
+import { getStripe } from '../lib/stripeClient';
 
 /*───────────────────────────────────────────────────────────────────────────
   Price IDs in live and test mode
 ───────────────────────────────────────────────────────────────────────────*/
-const IS_TEST = process.env.STRIPE_KEY!.startsWith('sk_test');
-
-const PRICES = IS_TEST
-  ? {
-      STARTER:  'price_1ReqRTC06iB64lkC7K2urHlK', // Starter 2 000  (test)
-      PRO:      'price_1ReqRtC06iB64lkCu2FSOxqz', // Pro 12 000     (test)
-      OVERAGE:  'price_1ReqT7C06iB64lkCFDfgCqO4', // Overage plan   (test)
-    }
-  : {
-      STARTER:  'price_1RejY7C06iB64lkCRQh26hSB', // Starter 2 000  (live)
-      PRO:      'price_1Reja6C06iB64lkCIjaBIBnC', // Pro 12 000     (live)
-      OVERAGE:  'price_1RekXIC06iB64lkCURRkHq7Z', // Overage plan   (live)
-    };
+function prices() {
+  const isTest = (process.env.STRIPE_KEY ?? '').startsWith('sk_test');
+  return isTest
+    ? {
+        STARTER:  'price_1ReqRTC06iB64lkC7K2urHlK', // Starter 2 000  (test)
+        PRO:      'price_1ReqRtC06iB64lkCu2FSOxqz', // Pro 12 000     (test)
+        OVERAGE:  'price_1ReqT7C06iB64lkCFDfgCqO4', // Overage plan   (test)
+      }
+    : {
+        STARTER:  'price_1RejY7C06iB64lkCRQh26hSB', // Starter 2 000  (live)
+        PRO:      'price_1Reja6C06iB64lkCIjaBIBnC', // Pro 12 000     (live)
+        OVERAGE:  'price_1RekXIC06iB64lkCURRkHq7Z', // Overage plan   (live)
+      };
+}
 
 /*───────────────────────────────────────────────────────────────────────────
   Redirect targets after Stripe Checkout
@@ -36,6 +35,13 @@ export const router = Router();
  */
 router.get('/api/subscribe/:plan', async (req: Request, res: Response, next: NextFunction) => {
   try {
+    const stripe = getStripe();
+    if (!stripe) {
+      return res.status(503).send('Subscribe unavailable: STRIPE_KEY not configured');
+    }
+
+    const PRICES = prices();
+
     const apiKey = req.query.key as string;
     if (!apiKey) return res.status(400).send('Missing ?key');
 

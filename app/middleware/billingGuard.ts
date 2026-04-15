@@ -1,6 +1,7 @@
 // app/middleware/billingGuard.ts
 import { Request, Response, NextFunction } from 'express';
 import { pool } from '../db';
+import { BILLING_BYPASS_LOCALS_KEY } from './apiKeyGuard';
 
 /**
  * Validates API key exists in accounts table, then blocks requests whose subscription is paused (payment failure).
@@ -12,6 +13,11 @@ export async function billingGuard(req: Request, res: Response, next: NextFuncti
     if (!apiKey) {
       console.warn("Blocked convert (invalid key):", req.ip);
       return res.status(401).json({ error: 'invalid_api_key' });
+    }
+
+    // Env-approved keys are allowed to skip account/subscription DB checks (local/dev flow).
+    if (res.locals[BILLING_BYPASS_LOCALS_KEY] === true) {
+      return next();
     }
 
     // Bypass all checks for demo key

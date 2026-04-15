@@ -7,6 +7,7 @@ import { init as initDb }   from './db';
 
 /* middleware */
 import { usageCap       } from './middleware/usageCap';
+import { apiKeyGuard    } from './middleware/apiKeyGuard';
 import { billingGuard   } from './middleware/billingGuard';
 import { concurrencyGuard } from './middleware/concurrencyGuard';  // ← use existing file
 
@@ -64,6 +65,7 @@ async function init(): Promise<Express> {
   CronMiddleware.init();
 
   /* ── guards on /api/convert ───────────────────────────── */
+  app.use('/api/convert', apiKeyGuard);
   app.use('/api/convert', concurrencyGuard); // limit parallel renders
   app.use('/api/convert', billingGuard);     // block paused/unpaid subs
   app.use('/api/convert', usageCap);         // 50-page free cap

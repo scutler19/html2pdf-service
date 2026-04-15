@@ -73,6 +73,30 @@ function asBoolean(value: unknown): boolean | undefined {
   return undefined;
 }
 
+/** Optional `captureMode`; omitted/empty → `pdf`; only `pdf` | `screenshot_pdf` accepted (case-sensitive). */
+function asOptionalCaptureMode(value: unknown): 'pdf' | 'screenshot_pdf' {
+  const v = unwrap(value);
+  if (v === undefined || v === null || v === '') {
+    return 'pdf';
+  }
+  if (v === 'pdf' || v === 'screenshot_pdf') {
+    return v;
+  }
+  throw new BadInputError('captureMode');
+}
+
+/** Optional `mediaType`; omitted/empty → default print in renderer; only `print` | `screen` accepted (case-sensitive). */
+function asOptionalMediaType(value: unknown): 'print' | 'screen' | undefined {
+  const v = unwrap(value);
+  if (v === undefined || v === null || v === '') {
+    return undefined;
+  }
+  if (v === 'print' || v === 'screen') {
+    return v;
+  }
+  throw new BadInputError('mediaType');
+}
+
 /** Optional `printBackground`; defaults to `true`; invalid values throw. */
 function asPrintBackground(value: unknown): boolean {
   const v = unwrap(value);
@@ -145,6 +169,77 @@ function asOptionalScale(value: unknown): number | undefined {
 }
 
 /** Optional job timeout (ms); strict integer in [TIMEOUT_MS_MIN, TIMEOUT_MS_MAX]. */
+/** Optional CSS selectors to hide in the PDF; omitted or empty array → undefined. */
+function asOptionalWaitForSelector(value: unknown): string | undefined {
+  const v = unwrap(value);
+  if (v === undefined || v === null) {
+    return undefined;
+  }
+  if (typeof v !== 'string') {
+    throw new BadInputError('waitForSelector');
+  }
+  const t = v.trim();
+  if (t === '') {
+    throw new BadInputError('waitForSelector');
+  }
+  return t;
+}
+
+function asOptionalHideSelectors(value: unknown): string[] | undefined {
+  if (value === undefined || value === null || value === '') {
+    return undefined;
+  }
+  if (typeof value === 'string') {
+    const t = value.trim();
+    if (t === '') {
+      throw new BadInputError('hideSelectors');
+    }
+    return [t];
+  }
+  if (Array.isArray(value)) {
+    const out: string[] = [];
+    for (const item of value) {
+      if (typeof item !== 'string') {
+        throw new BadInputError('hideSelectors');
+      }
+      const t = item.trim();
+      if (t === '') {
+        throw new BadInputError('hideSelectors');
+      }
+      out.push(t);
+    }
+    return out.length > 0 ? out : undefined;
+  }
+  throw new BadInputError('hideSelectors');
+}
+
+const VIEWPORT_MIN = 320;
+const VIEWPORT_MAX = 3840;
+
+/** Optional viewport dimension; omitted/empty → undefined. Integers only, in [VIEWPORT_MIN, VIEWPORT_MAX]. */
+function asOptionalViewportDimension(value: unknown): number | undefined {
+  const v = unwrap(value);
+  if (v === undefined || v === null || v === '') {
+    return undefined;
+  }
+  let n: number;
+  if (typeof v === 'number') {
+    n = v;
+  } else if (typeof v === 'string') {
+    const t = v.trim();
+    if (t === '') {
+      return undefined;
+    }
+    n = Number(t);
+  } else {
+    throw new BadInputError('viewport');
+  }
+  if (!Number.isFinite(n) || !Number.isInteger(n) || n < VIEWPORT_MIN || n > VIEWPORT_MAX) {
+    throw new BadInputError('viewport');
+  }
+  return n;
+}
+
 function asOptionalTimeoutMs(value: unknown): number | undefined {
   const v = unwrap(value);
   if (v === undefined || v === null || v === '') {
@@ -253,6 +348,20 @@ function parsePdfConvertInput(source: Record<string, unknown>): PDF.ConvertHtmlT
 
   const timeout = asOptionalTimeoutMs(source.timeout);
 
+  const hideSelectors = asOptionalHideSelectors(source.hideSelectors);
+
+  const waitForSelector = asOptionalWaitForSelector(source.waitForSelector);
+
+  const mediaType = asOptionalMediaType(source.mediaType);
+
+  const captureMode = asOptionalCaptureMode(source.captureMode);
+
+  const viewportWidth = asOptionalViewportDimension(source.viewportWidth);
+  const viewportHeight = asOptionalViewportDimension(source.viewportHeight);
+  if ((viewportWidth === undefined) !== (viewportHeight === undefined)) {
+    throw new BadInputError('viewport');
+  }
+
   const width = asOptionalDimension(source.width, 'width');
   const height = asOptionalDimension(source.height, 'height');
 
@@ -311,6 +420,20 @@ function parsePdfConvertInput(source: Record<string, unknown>): PDF.ConvertHtmlT
   }
   if (timeout !== undefined) {
     options.timeout = timeout;
+  }
+  options.captureMode = captureMode;
+  if (hideSelectors !== undefined) {
+    options.hideSelectors = hideSelectors;
+  }
+  if (waitForSelector !== undefined) {
+    options.waitForSelector = waitForSelector;
+  }
+  if (mediaType !== undefined) {
+    options.mediaType = mediaType;
+  }
+  if (viewportWidth !== undefined && viewportHeight !== undefined) {
+    options.viewportWidth = viewportWidth;
+    options.viewportHeight = viewportHeight;
   }
   if (width !== undefined) {
     options.width = width;

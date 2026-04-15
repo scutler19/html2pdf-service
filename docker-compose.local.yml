@@ -1,0 +1,59 @@
+# Local development only: app + Postgres on localhost:3000.
+# Production / server workflows keep using docker-compose.yml (external network, etc.).
+#
+# DATABASE_URL is fixed here so the container always talks to the local Postgres service
+# even if your root .env contains a Render or other remote URL.
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: fileslap
+      POSTGRES_PASSWORD: fileslap
+      POSTGRES_DB: fileslap
+    volumes:
+      - html2pdf_local_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U fileslap -d fileslap']
+      interval: 3s
+      timeout: 5s
+      retries: 10
+      start_period: 5s
+
+  web:
+    build:
+      context: ./app
+      args:
+        CACHEBUST: ${CACHEBUST:-1}
+        BUILD_DATE: ${BUILD_DATE:-local}
+    ports:
+      - '3000:3000'
+    env_file:
+      # Optional; create from .env.local.example. Not loaded from root `.env`, so Render
+      # credentials in `.env` are not applied to this stack unless you copy them here.
+      - path: .env.local
+        required: false
+    environment:
+      TZ: Europe/Paris
+      NODE_ENV: development
+      PORT: '3000'
+      # Overrides any DATABASE_URL in .env.local so local DB is always used.
+      DATABASE_URL: postgresql://fileslap:fileslap@postgres:5432/fileslap
+    depends_on:
+      postgres:
+        condition: service_healthy
+    volumes:
+      - ./app/config:/app/config
+      - ./app/controller:/app/controller
+      - ./app/log:/app/log
+      - ./app/middleware:/app/middleware
+      - ./app/model:/app/model
+      - ./app/private:/app/private
+      - ./app/public:/app/public
+      - ./app/lib:/app/lib
+      - ./app/app.ts:/app/app.ts
+      - ./app/db.ts:/app/db.ts
+      - ./app/tsconfig.json:/app/tsconfig.json
+
+volumes:
+  html2pdf_local_pgdata:

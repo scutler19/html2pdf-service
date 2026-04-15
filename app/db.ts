@@ -27,6 +27,7 @@ function shouldUseSsl(databaseUrl: string | undefined): boolean {
     hostname === 'localhost' ||
     hostname === '127.0.0.1' ||
     hostname === '::1' ||
+    hostname === 'postgres' ||
     hostname === 'fileslap-postgres' ||
     hostname === 'host.docker.internal'
   ) {

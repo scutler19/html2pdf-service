@@ -3,3 +3,4 @@
 
 # Configuration file
 .env
+.env.local

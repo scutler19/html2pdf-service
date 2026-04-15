@@ -1,6 +1,7 @@
 // app/middleware/usageCap.ts
 import { Request, Response, NextFunction } from 'express';
 import { pool } from '../db';
+import { BILLING_BYPASS_LOCALS_KEY } from './apiKeyGuard';
 
 // free-tier limits
 const MAX_PDFS_MONTH = 50;
@@ -12,6 +13,11 @@ const DEMO_API_KEY = 'demo-unlimited-key-2024';
 export async function usageCap(req: Request, res: Response, next: NextFunction) {
   const apiKey = req.headers['x-api-key'] as string;
   if (!apiKey) return res.status(401).send('API key required');
+
+  // Env-approved local/dev keys should skip quota enforcement.
+  if (res.locals[BILLING_BYPASS_LOCALS_KEY] === true) {
+    return next();
+  }
 
   // Bypass usage limits for demo key
   if (apiKey === DEMO_API_KEY) {

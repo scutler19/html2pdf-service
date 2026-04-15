@@ -1,8 +1,6 @@
 // app/controller/billing.ts
 import { Router, Request, Response, NextFunction } from 'express';
-import Stripe from 'stripe';
-
-const stripe = new Stripe(process.env.STRIPE_KEY!, { apiVersion: '2024-04-10' });
+import { getStripe } from '../lib/stripeClient';
 
 const RETURN_URL = 'https://fileslap.com/account'; // where Stripe sends them back
 
@@ -15,6 +13,11 @@ export const router = Router();
  */
 router.get('/api/billing', async (req: Request, res: Response, next: NextFunction) => {
   try {
+    const stripe = getStripe();
+    if (!stripe) {
+      return res.status(503).send('Billing unavailable: STRIPE_KEY not configured');
+    }
+
     const apiKey = req.query.key as string;
     if (!apiKey) return res.status(400).send('Missing ?key');
 
