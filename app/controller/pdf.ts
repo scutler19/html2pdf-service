@@ -14,6 +14,16 @@ class BadInputError extends Error {
   }
 }
 
+/** `instanceof` is unreliable for `Error` subclasses in some TS/Node setups; use a structural check. */
+function isBadInputError(err: unknown): err is BadInputError {
+  return (
+    typeof err === 'object' &&
+    err !== null &&
+    (err as Error).name === 'BadInputError' &&
+    typeof (err as BadInputError).field === 'string'
+  );
+}
+
 function unwrap(value: unknown): unknown {
   if (Array.isArray(value)) {
     return value.length > 0 ? unwrap(value[0]) : undefined;
@@ -110,6 +120,58 @@ function asOptionalNumber(value: unknown): number | undefined {
   throw new BadInputError('delayMs');
 }
 
+function asOptionalScale(value: unknown): number | undefined {
+  const v = unwrap(value);
+  if (v === undefined || v === null || v === '') {
+    return undefined;
+  }
+  let n: number;
+  if (typeof v === 'number') {
+    n = v;
+  } else if (typeof v === 'string') {
+    const t = v.trim();
+    if (t === '') {
+      return undefined;
+    }
+    n = Number(t);
+  } else {
+    throw new BadInputError('scale');
+  }
+  if (!Number.isFinite(n) || n < 0.1 || n > 2) {
+    throw new BadInputError('scale');
+  }
+  return n;
+}
+
+/** Optional job timeout (ms); strict integer in [TIMEOUT_MS_MIN, TIMEOUT_MS_MAX]. */
+function asOptionalTimeoutMs(value: unknown): number | undefined {
+  const v = unwrap(value);
+  if (v === undefined || v === null || v === '') {
+    return undefined;
+  }
+  let n: number;
+  if (typeof v === 'number') {
+    n = v;
+  } else if (typeof v === 'string') {
+    const t = v.trim();
+    if (t === '') {
+      return undefined;
+    }
+    n = Number(t);
+  } else {
+    throw new BadInputError('timeout');
+  }
+  if (
+    !Number.isFinite(n) ||
+    !Number.isInteger(n) ||
+    n < PDF.TIMEOUT_MS_MIN ||
+    n > PDF.TIMEOUT_MS_MAX
+  ) {
+    throw new BadInputError('timeout');
+  }
+  return n;
+}
+
 function asOptionalDimension(value: unknown, fieldName: string): string | undefined {
   const v = unwrap(value);
   if (v === undefined || v === null || v === '') {
@@ -160,9 +222,15 @@ function parsePdfConvertInput(source: Record<string, unknown>): PDF.ConvertHtmlT
 
   const landscape = asBoolean(source.landscape) ?? false;
 
+  const preferCSSPageSize = asBoolean(source.preferCSSPageSize) ?? false;
+
   const printBackground = asPrintBackground(source.printBackground);
 
   const delayMs = asOptionalNumber(source.delayMs);
+
+  const scale = asOptionalScale(source.scale);
+
+  const timeout = asOptionalTimeoutMs(source.timeout);
 
   const width = asOptionalDimension(source.width, 'width');
   const height = asOptionalDimension(source.height, 'height');
@@ -189,6 +257,7 @@ function parsePdfConvertInput(source: Record<string, unknown>): PDF.ConvertHtmlT
   const options: PDF.ConvertHtmlToPdfOptions = {
     content,
     landscape,
+    preferCSSPageSize,
     printBackground,
   };
 
@@ -209,6 +278,12 @@ function parsePdfConvertInput(source: Record<string, unknown>): PDF.ConvertHtmlT
   }
   if (delayMs !== undefined) {
     options.delayMs = delayMs;
+  }
+  if (scale !== undefined) {
+    options.scale = scale;
+  }
+  if (timeout !== undefined) {
+    options.timeout = timeout;
   }
   if (width !== undefined) {
     options.width = width;
@@ -254,7 +329,7 @@ router.get('/api/convert', async (req: Request, res: Response, next: any) => {
   try {
     options = parsePdfConvertInput(toParamRecord(req.query));
   } catch (err) {
-    if (err instanceof BadInputError) {
+    if (isBadInputError(err)) {
       return res.status(400).json({ error: `Invalid input: ${err.field}` });
     }
     return next(err);
@@ -269,7 +344,7 @@ router.post('/api/convert', async (req: Request, res: Response, next: any) => {
   try {
     options = parsePdfConvertInput(toParamRecord(req.body));
   } catch (err) {
-    if (err instanceof BadInputError) {
+    if (isBadInputError(err)) {
       return res.status(400).json({ error: `Invalid input: ${err.field}` });
     }
     return next(err);
